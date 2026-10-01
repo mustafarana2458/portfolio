@@ -262,6 +262,13 @@ html.has-cursor select {
   }
 }
 
+/* Adaptive quality: weaker phones get no background wire fields (class set in layout <head>). */
+@media (max-width: 767px) {
+  html.wires-off [data-wire-field] {
+    display: none;
+  }
+}
+
 /* Looping animations stop while their section is off screen (see SiteReady). */
 /* Scoped to the looping elements: a [data-offscreen] * rule would re-match every element in
    the section each time it enters or leaves the viewport. */

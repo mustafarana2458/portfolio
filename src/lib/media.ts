@@ -17,7 +17,7 @@ export type CardMedia = {
   still?: string;
   alt: string;
   fit: "cover" | "contain";
-  video?: { mp4: string; webm: string; poster: string };
+  video?: { mp4: string; webm: string; mobile: string; poster: string };
 };
 
 export function cardMedia(p: MediaSource): CardMedia {
@@ -25,6 +25,7 @@ export function cardMedia(p: MediaSource): CardMedia {
     ? {
         mp4: p.video,
         webm: p.video.replace(/\.mp4$/, ".webm"),
+        mobile: p.video.replace(/\.mp4$/, "-m.mp4"), // 640px H.264 for phones (prepare-videos)
         poster: p.video.replace(/^\/videos\//, "/images/posters/").replace(/\.mp4$/, ".jpg"),
       }
     : undefined;

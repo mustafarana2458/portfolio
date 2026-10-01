@@ -3,38 +3,47 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
-type Props = { mp4: string; webm: string; poster: string; className?: string };
+type Props = { mp4: string; webm: string; mobile?: string; poster: string; className?: string };
+type Mode = "hover" | "inview" | null;
 
-// Only one preview plays at a time across the page.
+// Only one preview plays at a time across the page (hover or in-view).
 let current: { stop: () => void } | null = null;
 
 /**
- * Scroll-preview video layered over a card's still (same 16:10 frame, same first frame).
- * Plays while the closest `[data-hover-root]` ancestor is hovered or has keyboard focus.
+ * Preview video layered over a card's still (same 16:10 frame, same first frame).
  *
- * - Desktop (hover + fine pointer) and motion-OK only; renders nothing otherwise.
- * - Nothing is downloaded until the first hover. Then sources are attached with preload="auto",
- *   and it fades in only after `canplaythrough` (or a 1s fallback) so playback starts smoothly
- *   from frame 0.
+ * - Desktop (hover + fine pointer): plays while the closest `[data-hover-root]` is hovered or
+ *   focused. Nothing downloads until the first hover.
+ * - Phones (≤767px): plays muted/inline/looped while the card's media frame is ≥60% on screen
+ *   (the whole card can be taller than the screen), pauses when it
+ *   leaves. Sources are attached (preload="none" until then) only when the card is about one
+ *   screen away, and a 640px H.264 file is served via <source media="(max-width: 767px)">.
+ * - Reduced motion or Data Saver: renders nothing, so the poster/still is all that shows.
  * - Starting one preview pauses any other.
  */
-export default function HoverVideo({ mp4, webm, poster, className }: Props) {
-  const [enabled, setEnabled] = useState(false);
+export default function HoverVideo({ mp4, webm, mobile, poster, className }: Props) {
+  const [mode, setMode] = useState<Mode>(null);
   const [visible, setVisible] = useState(false);
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    const mq = window.matchMedia("(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)");
-    const update = () => setEnabled(mq.matches);
+    const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const hover = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const phone = window.matchMedia("(max-width: 767px)");
+    const update = () =>
+      setMode(saveData || reduced.matches ? null : hover.matches ? "hover" : phone.matches && mobile ? "inview" : null);
     update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
+    for (const mq of [reduced, hover, phone]) mq.addEventListener("change", update);
+    return () => {
+      for (const mq of [reduced, hover, phone]) mq.removeEventListener("change", update);
+    };
+  }, [mobile]);
 
   useEffect(() => {
     const video = ref.current;
     const root = video?.closest<HTMLElement>("[data-hover-root]");
-    if (!enabled || !video || !root) return;
+    if (!mode || !video || !root) return;
 
     let active = false;
     let armed = false;
@@ -43,24 +52,33 @@ export default function HoverVideo({ mp4, webm, poster, className }: Props) {
     let resetTimer = 0;
 
     const arm = () => {
+      if (armed) return;
       armed = true;
       video.poster = poster;
       video.preload = "auto";
-      for (const [src, type] of [[webm, "video/webm"], [mp4, "video/mp4"]] as const) {
+      const sources: [string, string, string?][] = [
+        ...(mobile ? [[mobile, "video/mp4", "(max-width: 767px)"] as [string, string, string]] : []),
+        [webm, "video/webm"],
+        [mp4, "video/mp4"],
+      ];
+      for (const [src, type, media] of sources) {
         const s = document.createElement("source");
         s.src = src;
         s.type = type;
+        if (media) s.media = media;
         video.appendChild(s);
       }
       video.load();
     };
 
-    const playFromStart = () => {
+    const play = (fromStart: boolean) => {
       window.clearTimeout(waitTimer);
       if (!active) return;
-      try {
-        video.currentTime = 0;
-      } catch {}
+      if (fromStart) {
+        try {
+          video.currentTime = 0;
+        } catch {}
+      }
       video.play().catch(() => {});
     };
 
@@ -70,6 +88,7 @@ export default function HoverVideo({ mp4, webm, poster, className }: Props) {
         window.clearTimeout(waitTimer);
         setVisible(false);
         video.pause();
+        if (mode !== "hover") return; // phones resume where they left off
         // Rewind after the fade-out so the next hover starts at frame 0.
         window.clearTimeout(resetTimer);
         resetTimer = window.setTimeout(() => {
@@ -88,9 +107,9 @@ export default function HoverVideo({ mp4, webm, poster, className }: Props) {
       current = me;
       active = true;
       window.clearTimeout(resetTimer);
-      if (!armed) arm();
-      if (ready) playFromStart();
-      else waitTimer = window.setTimeout(playFromStart, 1000); // fallback if canplaythrough is slow
+      arm();
+      if (ready) play(mode === "hover");
+      else waitTimer = window.setTimeout(() => play(mode === "hover"), 1000); // fallback if canplaythrough is slow
     };
     const stop = () => {
       if (current === me) current = null;
@@ -100,24 +119,43 @@ export default function HoverVideo({ mp4, webm, poster, className }: Props) {
     const onReady = () => {
       if (ready) return;
       ready = true;
-      playFromStart();
+      play(mode === "hover");
     };
     const onPlaying = () => active && setVisible(true);
     const onFocusOut = (e: FocusEvent) => {
       if (!root.contains(e.relatedTarget as Node)) stop();
     };
-
-    root.addEventListener("pointerenter", start);
-    root.addEventListener("pointerleave", stop);
-    root.addEventListener("focusin", start);
-    root.addEventListener("focusout", onFocusOut);
     video.addEventListener("canplaythrough", onReady);
     video.addEventListener("playing", onPlaying);
+
+    const cleanups: (() => void)[] = [];
+    if (mode === "hover") {
+      root.addEventListener("pointerenter", start);
+      root.addEventListener("pointerleave", stop);
+      root.addEventListener("focusin", start);
+      root.addEventListener("focusout", onFocusOut);
+      cleanups.push(() => {
+        root.removeEventListener("pointerenter", start);
+        root.removeEventListener("pointerleave", stop);
+        root.removeEventListener("focusin", start);
+        root.removeEventListener("focusout", onFocusOut);
+      });
+    } else {
+      const frame = video.parentElement!; // the 16:10 media frame
+      // Attach sources when the card is about a screen away…
+      const near = new IntersectionObserver(([e]) => e.isIntersecting && (arm(), near.disconnect()), { rootMargin: "100% 0px" });
+      near.observe(frame);
+      // …play while ≥60% of its media frame is visible.
+      const seen = new IntersectionObserver(([e]) => (e.intersectionRatio >= 0.6 ? start() : stop()), { threshold: [0, 0.6] });
+      seen.observe(frame);
+      cleanups.push(() => {
+        near.disconnect();
+        seen.disconnect();
+      });
+    }
+
     return () => {
-      root.removeEventListener("pointerenter", start);
-      root.removeEventListener("pointerleave", stop);
-      root.removeEventListener("focusin", start);
-      root.removeEventListener("focusout", onFocusOut);
+      cleanups.forEach((c) => c());
       video.removeEventListener("canplaythrough", onReady);
       video.removeEventListener("playing", onPlaying);
       window.clearTimeout(waitTimer);
@@ -125,9 +163,9 @@ export default function HoverVideo({ mp4, webm, poster, className }: Props) {
       if (current === me) current = null;
       video.pause();
     };
-  }, [enabled, mp4, webm, poster]);
+  }, [mode, mp4, webm, mobile, poster]);
 
-  if (!enabled) return null;
+  if (!mode) return null;
 
   return (
     <video

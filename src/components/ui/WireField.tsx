@@ -22,7 +22,12 @@ const V_MASK = "linear-gradient(to bottom, transparent, #000 12%, #000 88%, tran
 
 function Strip({ strip, color, mask, className, style, name }: { strip: WireStrip; color: string; mask: string; className: string; style?: CSSProperties; name: string }) {
   return (
-    <div data-strip={name} className={cn("absolute", className)} style={{ ...style, maskImage: mask, WebkitMaskImage: mask }}>
+    // Fade the strip ends with a mask on larger screens; phones get the plain static SVG.
+    <div
+      data-strip={name}
+      className={cn("absolute md:[-webkit-mask-image:var(--wire-mask)] md:[mask-image:var(--wire-mask)]", className)}
+      style={{ ...style, ["--wire-mask" as string]: mask }}
+    >
       <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
         {strip.edges.map((e, i) => (
           <path
@@ -73,6 +78,7 @@ export default function WireField({ seed, color, labels, variant = "project", po
   return (
     <div
       aria-hidden
+      data-wire-field=""
       className={cn("pointer-events-none absolute z-[-1]", VARS[variant])}
       style={{ inset: "calc(-1 * var(--wy)) calc(-1 * var(--wx))" }}
     >
@@ -108,7 +114,7 @@ export function CardWires({ seed, color, labels }: { seed: string; color: string
   const f = buildWireField(seed, labels, { across: 7 });
   const mask = "linear-gradient(to right, transparent 35%, #000 70%, #000 94%, transparent)";
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[-1] h-14 overflow-hidden rounded-b-2xl">
+    <div aria-hidden data-wire-field="" className="pointer-events-none absolute inset-x-0 bottom-0 z-[-1] h-14 overflow-hidden rounded-b-2xl">
       <Strip name="card" strip={f.bottom} color={color} mask={mask} className="inset-0" />
     </div>
   );

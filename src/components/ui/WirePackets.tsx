@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { WireCurve } from "@/lib/wires";
+import { cn } from "@/lib/utils";
 
 const STEPS = 16;
 const at = (c: WireCurve, t: number) => {
@@ -12,15 +13,19 @@ const at = (c: WireCurve, t: number) => {
 /**
  * 2-3 small packets on a wire field. Web Animations on `transform` only, so they run on the
  * compositor (no per-frame JS, no paint). Keyframes are rebuilt from the strip sizes on resize.
- * Played only while the field is on screen; never on phones or for reduced motion.
+ * Played only while the field is on screen (so on a phone, only the section you're looking at
+ * moves). Phones run 2 packets; reduced motion runs none.
  */
 export default function WirePackets({ packets, color }: { packets: { strip: "top" | "bottom"; c: WireCurve }[]; color: string }) {
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = root.current!;
-    if (!window.matchMedia("(min-width: 768px) and (prefers-reduced-motion: no-preference)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (document.documentElement.classList.contains("wires-off")) return; // weaker phone: no wire fields
     const field = el.parentElement!;
+    const phone = window.matchMedia("(max-width: 767px)").matches;
+    const live = phone ? packets.slice(0, 2) : packets;
     const dots = Array.from(el.children) as HTMLElement[];
     let anims: Animation[] = [];
     let inView = false;
@@ -28,7 +33,7 @@ export default function WirePackets({ packets, color }: { packets: { strip: "top
     const build = () => {
       anims.forEach((a) => a.cancel());
       const fieldH = field.clientHeight;
-      anims = packets.map((p, i) => {
+      anims = live.map((p, i) => {
         const strip = field.querySelector<HTMLElement>(`[data-strip="${p.strip}"]`)!;
         const w = strip.clientWidth, h = strip.clientHeight, top = p.strip === "top" ? 0 : fieldH - h;
         const frames: Keyframe[] = [];
@@ -58,11 +63,11 @@ export default function WirePackets({ packets, color }: { packets: { strip: "top
   }, [packets]);
 
   return (
-    <div ref={root} className="absolute inset-0 max-md:hidden motion-reduce:hidden">
+    <div ref={root} className="absolute inset-0 motion-reduce:hidden">
       {packets.map((_, i) => (
         <span
           key={i}
-          className="absolute left-[-3px] top-[-3px] h-[6px] w-[6px] rounded-full"
+          className={cn("absolute left-[-3px] top-[-3px] h-[6px] w-[6px] rounded-full", i >= 2 && "max-md:hidden")}
           style={{ background: color, boxShadow: `0 0 8px 2px ${color}55`, opacity: 0 }}
         />
       ))}
