@@ -2,6 +2,7 @@
 
 import { useRef, type ElementType, type ReactNode } from "react";
 import { gsap, useGSAP, layerWhileAnimating } from "@/lib/gsap";
+import { isLite } from "@/lib/utils";
 
 type Props = { children: ReactNode; as?: ElementType; className?: string; stagger?: number };
 
@@ -17,9 +18,8 @@ export default function RevealOnExecute({ children, as: Tag = "div", className, 
     () => {
       const el = ref.current!;
       const node = el.closest("[data-node]");
-      // Phones: content shows as-is (the node's flash marks the execution); sliding whole
-      // blocks in costs a large repaint or layer raster per reveal on a 390px screen.
-      if (!node || window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 767px)").matches) return;
+      // Weaker phones: content shows as-is (the node's flash marks the execution).
+      if (!node || isLite() || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       if (node.getAttribute("data-state") === "success") return;
       // Only hide what's still below the packet line; content already above it shows now.
       if (el.getBoundingClientRect().top < window.innerHeight * 0.6) return;

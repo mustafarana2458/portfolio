@@ -19,7 +19,7 @@ const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variab
 const fullTitle = `${site.name} — ${site.title}`;
 
 // deviceMemory is Chromium-only; where it's missing, cores + Data Saver decide.
-const WIRES_CHECK = `(function(){try{var n=navigator,c=n.connection||{},m=n.deviceMemory;if(matchMedia("(max-width: 767px)").matches&&(c.saveData||(n.hardwareConcurrency||0)<6||(m!==undefined&&m<4)))document.documentElement.classList.add("wires-off")}catch(e){}})()`;
+const LITE_CHECK = `(function(){try{var n=navigator,c=n.connection||{},m=n.deviceMemory;if(matchMedia("(max-width: 767px)").matches&&(c.saveData||(n.hardwareConcurrency||0)<6||(m!==undefined&&m<4)))document.documentElement.classList.add("lite")}catch(e){}})()`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -78,8 +78,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${display.variable} ${body.variable} ${serif.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         {/* Adaptive quality, before first paint: phones that aren't capable (fewer than 6 cores,
-            under 4GB memory, or Data Saver on) get no background wire fields. */}
-        <script dangerouslySetInnerHTML={{ __html: WIRES_CHECK }} />
+            under 4GB memory, or Data Saver on) get html.lite: no background wire fields and
+            static looping animations. Capable phones animate like desktop. */}
+        <script dangerouslySetInnerHTML={{ __html: LITE_CHECK }} />
         <noscript>
           <style>{`.split-word{transform:none!important}.node .node-dot{background:rgb(var(--ok))!important}.node .node-meta>span{display:none!important}.node .node-meta>.meta-success{display:inline!important}`}</style>
         </noscript>

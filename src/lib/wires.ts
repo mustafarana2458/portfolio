@@ -16,7 +16,7 @@ export type WireField = {
   bottom: WireStrip;
   left: WireStrip;
   right: WireStrip;
-  /** Labels on top/bottom strip nodes (normalised to that strip). */
+  /** Up to 5 labels on top/bottom strip nodes (normalised to that strip). */
   labels: { strip: "top" | "bottom"; x: number; y: number; text: string }[];
   /** Up to 3 top/bottom edges for the moving packets. */
   packets: { strip: "top" | "bottom"; c: WireCurve }[];
@@ -83,7 +83,7 @@ export function buildWireField(seed: string, labels: string[], { across = 9, dow
     ...bottom.nodes.map((n) => ({ strip: "bottom" as const, n })),
   ].filter(({ n }) => n.mobile && n.x > 0.08 && n.x < 0.85);
   const used = new Set<number>();
-  const picked = labels.slice(0, 3).map((text, k, arr) => {
+  const picked = labels.slice(0, 5).map((text, k, arr) => {
     const want = (k + 0.5) / arr.length;
     let best = -1;
     spots.forEach((s, i) => {

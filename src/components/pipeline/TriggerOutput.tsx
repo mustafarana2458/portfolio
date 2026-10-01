@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { cn } from "@/lib/utils";
+import { cn, isLite } from "@/lib/utils";
 
 type Value = string | string[];
 type Seg = { t: string; c: string };
@@ -43,8 +43,8 @@ export default function TriggerOutput({ data }: { data: Record<string, Value> })
 
   useEffect(() => {
     const node = root.current?.closest("[data-node]");
-    // Phones show the JSON complete: typing re-renders ~100 spans every 40ms.
-    if (!node || window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 767px)").matches) return;
+    // Weaker phones show the JSON complete: typing re-renders ~100 spans every 40ms.
+    if (!node || isLite() || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (node.getAttribute("data-state") === "success") return;
     setTyped(0);
     let timer = 0;

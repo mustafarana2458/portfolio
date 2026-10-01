@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { executeNode } from "@/lib/pipeline";
-import { onSiteReady } from "@/lib/utils";
+import { isLite, onSiteReady } from "@/lib/utils";
 
 /**
  * The page-long pipeline. Connects every `[data-pipeline-anchor]` node in DOM order.
@@ -15,6 +15,12 @@ import { onSiteReady } from "@/lib/utils";
  * Scroll maps to a "packet line" at 60% of the viewport: the packet sits on the path where
  * the path reaches that line, the active stroke is drawn up to it, and each node executes
  * as its in-port crosses it. Reduced motion: full path drawn, no packet, every node run.
+ *
+ * Network: the wire fields around the nodes are joined into one network (a third static SVG,
+ * painted once per build, under the pipeline). Desktop: in each side gutter a wire runs from a
+ * field's bottom strip down to the next field's top strip, with a junction where it meets the
+ * pipeline (or a short tap into it). Phones: each field taps into the pipeline line. Skipped
+ * on html.lite (no wire fields there).
  *
  * Look: dim 2px base; the drawn part is bright accent over a soft glow stroke; the packet
  * (11px) drags a trail of 4 fading dots.
@@ -41,6 +47,7 @@ type Pt = { x: number; y: number };
 
 export default function GlobalPipeline() {
   const svgRef = useRef<SVGSVGElement>(null);
+  const netRef = useRef<SVGSVGElement>(null);
   const baseRef = useRef<SVGPathElement>(null);
   const stubsRef = useRef<SVGPathElement>(null);
   const curtainRef = useRef<HTMLDivElement>(null);
@@ -53,6 +60,7 @@ export default function GlobalPipeline() {
 
   useEffect(() => {
     const svg = svgRef.current!;
+    const net = netRef.current!;
     const main = svg.parentElement!;
     const base = baseRef.current!;
     const stubs = stubsRef.current!;
@@ -81,7 +89,7 @@ export default function GlobalPipeline() {
       const W = main.clientWidth;
       const H = main.scrollHeight;
       pageH = H;
-      for (const el of [svg, lit]) {
+      for (const el of [svg, lit, net]) {
         el.setAttribute("width", String(W));
         el.setAttribute("height", String(H));
         el.setAttribute("viewBox", `0 0 ${W} ${H}`);
@@ -95,7 +103,9 @@ export default function GlobalPipeline() {
       const nodes = els.map((el) => {
         const box = rel(el.getBoundingClientRect());
         const section = el.closest("section");
-        return { el, box, portY: box.t + headerH / 2, sectionTop: section ? rel(section.getBoundingClientRect()).t : box.t, section };
+        const fieldEl = el.parentElement?.querySelector<HTMLElement>(":scope > [data-wire-field]");
+        const field = fieldEl ? { r: rel(fieldEl.getBoundingClientRect()), color: fieldEl.dataset.wireColor || "#FF6B35" } : null;
+        return { el, box, portY: box.t + headerH / 2, sectionTop: section ? rel(section.getBoundingClientRect()).t : box.t, section, field };
       });
       if (nodes.length < 2) return;
 
@@ -176,10 +186,94 @@ export default function GlobalPipeline() {
       lens = Float32Array.from(Ls);
       total = dist;
 
+      drawNet(nodes, desktop, X, Y);
+
       for (const p of [base, glow, active]) p.setAttribute("d", d);
       stubs.setAttribute("d", stubD);
       anchors = nodes.map((nd) => ({ el: nd.el, y: nd.portY }));
       update();
+    };
+
+    type NetNode = { box: { l: number; r: number; t: number; b: number }; field: { r: { l: number; r: number; t: number; b: number }; color: string } | null };
+    const drawNet = (nodes: NetNode[], desktop: boolean, X: number[], Y: number[]) => {
+      if (isLite()) return void (net.innerHTML = "");
+      const defs: string[] = [];
+      const wires: string[] = [];
+      const dots: string[] = [];
+      const f1 = (v: number) => v.toFixed(1);
+      const junction = (x: number, y: number) =>
+        dots.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="3.5" style="fill:rgb(var(--bg));stroke:rgb(var(--accent))" stroke-opacity="0.7"/>`);
+      const terminal = (x: number, y: number, color: string) =>
+        dots.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="2.5" style="fill:rgb(var(--bg))" stroke="${color}" stroke-opacity="0.55"/>`);
+      // nearest pipeline sample to (x, y)
+      const nearest = (x: number, y: number) => {
+        let best = Infinity, bi = -1;
+        for (let k = 0; k < X.length; k++) {
+          if (Math.abs(Y[k] - y) > 220) continue;
+          const dd = (X[k] - x) ** 2 + (Y[k] - y) ** 2;
+          if (dd < best) ((best = dd), (bi = k));
+        }
+        return { i: bi, d: Math.sqrt(best) };
+      };
+
+      if (desktop) {
+        for (let i = 0; i < nodes.length - 1; i++) {
+          const A = nodes[i], B = nodes[i + 1];
+          if (!A.field || !B.field) continue;
+          const fa = A.field, fb = B.field;
+          const y0 = fa.r.b - (fa.r.b - A.box.b) / 2; // middle of A's bottom strip
+          const y1 = fb.r.t + (B.box.t - fb.r.t) / 2; // middle of B's top strip
+          if (y1 - y0 < 40) continue;
+          for (const side of ["l", "r"] as const) {
+            const gA = side === "r" ? fa.r.r - A.box.r : A.box.l - fa.r.l;
+            const gB = side === "r" ? fb.r.r - B.box.r : B.box.l - fb.r.l;
+            if (gA < 24 || gB < 24) continue;
+            // 28% of the gutter out from the card: clear of the pipeline (which runs mid-gutter)
+            const xa = side === "r" ? A.box.r + gA * 0.28 : A.box.l - gA * 0.28;
+            const xb = side === "r" ? B.box.r + gB * 0.28 : B.box.l - gB * 0.28;
+            const dy = (y1 - y0) * 0.45;
+            const c = [xa, y0, xa, y0 + dy, xb, y1 - dy, xb, y1];
+            const id = `wn${i}${side}`;
+            defs.push(`<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="0" y1="${f1(y0)}" x2="0" y2="${f1(y1)}"><stop offset="0" stop-color="${fa.color}"/><stop offset="1" stop-color="${fb.color}"/></linearGradient>`);
+            wires.push(`<path d="M${c.slice(0, 2).map(f1).join(" ")}C${c.slice(2).map(f1).join(" ")}" stroke="url(#${id})"/>`);
+            terminal(xa, y0, fa.color);
+            terminal(xb, y1, fb.color);
+            // Where it crosses the pipeline → junction; otherwise a short tap into it.
+            let hit = -1;
+            for (let k = 1; k < 48 && hit < 0; k++) {
+              const t = k / 48, u = 1 - t;
+              const px = u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6];
+              const py = u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7];
+              const n = nearest(px, py);
+              if (n.i >= 0 && n.d < 4) hit = n.i;
+            }
+            if (hit >= 0) junction(X[hit], Y[hit]);
+            else {
+              const mx = (xa + xb) / 2, my = (y0 + y1) / 2;
+              const n = nearest(mx, my);
+              if (n.i >= 0 && n.d > 8 && n.d < 160) {
+                const tx = X[n.i], ty = Y[n.i], h = (tx - mx) / 2;
+                wires.push(`<path d="M${f1(mx)} ${f1(my)}C${f1(mx + h)} ${f1(my)} ${f1(tx - h)} ${f1(ty)} ${f1(tx)} ${f1(ty)}" stroke="${fa.color}"/>`);
+                terminal(mx, my, fa.color);
+                junction(tx, ty);
+              }
+            }
+          }
+        }
+      } else {
+        // Phones: the pipeline is the line at x = 10; each field's strips tap into it.
+        const PX = 10;
+        for (const n of nodes) {
+          if (!n.field) continue;
+          const { r: fr, color } = n.field;
+          for (const [y, dir] of [[fr.t + (n.box.t - fr.t) / 2, -1], [fr.b - (fr.b - n.box.b) / 2, 1]]) {
+            wires.push(`<path d="M${PX} ${f1(y)}C${PX + 18} ${f1(y)} ${PX + 22} ${f1(y + dir * 9)} ${PX + 42} ${f1(y + dir * 9)}" stroke="${color}"/>`);
+            junction(PX, y);
+            terminal(PX + 42, y + dir * 9, color);
+          }
+        }
+      }
+      net.innerHTML = `<defs>${defs.join("")}</defs><g fill="none" stroke-width="1" stroke-opacity="0.22">${wires.join("")}</g>${dots.join("")}`;
     };
 
     // Curtain: show the lit path above y = `clip` using two compositor-only transforms.
@@ -263,6 +357,8 @@ export default function GlobalPipeline() {
 
   return (
     <>
+      {/* wire-field network: static, under the pipeline */}
+      <svg ref={netRef} aria-hidden data-wire-net="" className="pointer-events-none absolute left-0 top-0 z-[-1] overflow-visible" width="0" height="0" />
       {/* undrawn: dim, static */}
       <svg ref={svgRef} aria-hidden data-global-pipeline="" className="pointer-events-none absolute left-0 top-0 z-[-1] overflow-visible" width="0" height="0">
         <path ref={baseRef} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />

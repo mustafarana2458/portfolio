@@ -15,6 +15,7 @@ export default function Hero() {
   return (
     <section
       aria-label="Introduction"
+      data-no-burst=""
       className="relative flex min-h-[100svh] items-center overflow-hidden pb-10 pt-[calc(var(--nav-h)+1.5rem)] lg:pb-8"
     >
       <HeroNetwork />

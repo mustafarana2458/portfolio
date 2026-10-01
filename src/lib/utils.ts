@@ -59,3 +59,8 @@ export function markSiteReady() {
   (window as unknown as { __siteReady?: boolean }).__siteReady = true;
   window.dispatchEvent(new Event("site:ready"));
 }
+
+/** Weaker phone (html.lite, set in layout <head>): looping/decorative motion stays static. */
+export function isLite() {
+  return document.documentElement.classList.contains("lite");
+}

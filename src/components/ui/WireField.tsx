@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { buildWireField, curveD, type WireStrip } from "@/lib/wires";
 import { cn } from "@/lib/utils";
-import WirePackets from "./WirePackets";
+import WireFX from "./WireFX";
 
 // Background "wire field" around a card: the hero network's style, much quieter, tinted per
 // project. Static inline SVG generated at build time (seeded, so it's stable); no canvas, no
@@ -63,11 +63,12 @@ function Plug({ side, color }: { side: "in" | "out"; color: string }) {
     <svg
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      className={cn("absolute h-14", side === "in" ? "left-0" : "right-0")}
+      data-plug={side}
+      className={cn("wire-plug absolute h-14", side === "in" ? "left-0" : "right-0")}
       style={{ width: "var(--wx)", top: "calc(var(--wy) + var(--node-header-h) / 2 - 1.75rem)" }}
     >
       {d.map((p) => (
-        <path key={p} d={p} fill="none" stroke={color} strokeOpacity="0.35" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        <path key={p} d={p} fill="none" stroke={color} strokeOpacity="0.55" strokeWidth="1" vectorEffect="non-scaling-stroke" />
       ))}
     </svg>
   );
@@ -79,6 +80,7 @@ export default function WireField({ seed, color, labels, variant = "project", po
     <div
       aria-hidden
       data-wire-field=""
+      data-wire-color={color}
       className={cn("pointer-events-none absolute z-[-1]", VARS[variant])}
       style={{ inset: "calc(-1 * var(--wy)) calc(-1 * var(--wx))" }}
     >
@@ -88,23 +90,23 @@ export default function WireField({ seed, color, labels, variant = "project", po
       <Strip name="right" strip={f.right} color={color} mask={V_MASK} className="right-0 max-md:hidden" style={{ top: "var(--wy)", bottom: "var(--wy)", width: "var(--wx)" }} />
       {(ports === "both" || ports === "in") && <Plug side="in" color={color} />}
       {(ports === "both" || ports === "out") && <Plug side="out" color={color} />}
-      {f.labels.map((l) => (
+      {f.labels.map((l, k) => (
         <span
           key={l.text}
-          className="absolute whitespace-nowrap font-mono text-[12px] leading-none"
+          // phones keep the first three
+          className={cn("wire-label absolute whitespace-nowrap font-mono text-[12px] leading-none", k >= 3 && "max-md:hidden")}
           style={{
             left: `calc(${l.x * 100}% + 10px)`,
             ...(l.strip === "top"
               ? { top: `calc(var(--wy) * ${l.y} - 6px)` }
               : { bottom: `calc(var(--wy) * ${1 - l.y} - 6px)` }),
             color,
-            opacity: 0.6,
           }}
         >
           {l.text}
         </span>
       ))}
-      <WirePackets packets={f.packets} color={color} />
+      <WireFX seed={seed} labels={labels} color={color} kind={variant} />
     </div>
   );
 }
@@ -116,6 +118,7 @@ export function CardWires({ seed, color, labels }: { seed: string; color: string
   return (
     <div aria-hidden data-wire-field="" className="pointer-events-none absolute inset-x-0 bottom-0 z-[-1] h-14 overflow-hidden rounded-b-2xl">
       <Strip name="card" strip={f.bottom} color={color} mask={mask} className="inset-0" />
+      <WireFX seed={seed} labels={labels} across={7} color={color} kind="card" />
     </div>
   );
 }

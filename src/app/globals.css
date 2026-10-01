@@ -252,21 +252,37 @@ html.has-cursor select {
   cursor: auto;
 }
 
-/* Phones: looping status animations are static. The composited border flash still marks
-   each execution. */
-@media (max-width: 767px) {
-  .node[data-state="running"] > .node-header::after,
-  .node[data-state="running"] > .node-header .node-dot::after,
-  .loop-anim {
-    animation: none !important;
-  }
+/* Adaptive quality (html.lite = weaker phone, set in layout <head>): looping status
+   animations are static and there are no background wire fields. The composited border
+   flash still marks each execution. Capable phones run everything like desktop. */
+html.lite .node[data-state="running"] > .node-header::after,
+html.lite .node[data-state="running"] > .node-header .node-dot::after,
+html.lite .loop-anim {
+  animation: none !important;
+}
+html.lite [data-wire-field],
+html.lite [data-wire-net] {
+  display: none;
 }
 
-/* Adaptive quality: weaker phones get no background wire fields (class set in layout <head>). */
-@media (max-width: 767px) {
-  html.wires-off [data-wire-field] {
-    display: none;
-  }
+/* Wire fields: labels and port plugs brighten, and a lit copy of the strips fades in, while a
+   project / client card "executes" (data-wire-lit, see WireFX). Opacity only. */
+.wire-label,
+.wire-plug {
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+.wire-lit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+[data-wire-lit] .wire-label,
+[data-wire-lit] .wire-plug,
+[data-wire-lit] .wire-lit {
+  opacity: 1;
 }
 
 /* Looping animations stop while their section is off screen (see SiteReady). */
@@ -274,7 +290,10 @@ html.has-cursor select {
    the section each time it enters or leaves the viewport. */
 [data-offscreen] .loop-anim,
 [data-offscreen] .node-header::after,
-[data-offscreen] .node-dot::after {
+[data-offscreen] .node-dot::after,
+.loop-anim[data-unseen],
+.node[data-unseen] > .node-header::after,
+.node[data-unseen] > .node-header .node-dot::after {
   animation-play-state: paused !important;
 }
 

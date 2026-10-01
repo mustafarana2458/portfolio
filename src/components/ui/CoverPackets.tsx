@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { isLite } from "@/lib/utils";
 
 const SAMPLES = 64;
 const DUR = 2.4; // seconds per edge
@@ -9,9 +10,8 @@ const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
 /**
  * Packets for <AgentGraphCover>: HTML dots over the SVG, moved with transforms only (no
  * SVG/SMIL animation, so nothing is repainted). Each edge is sampled once into a lookup
- * table; the loop runs only while the cover is on screen and the tab is visible. Phones get
- * the dots parked mid-edge with no loop (measured: the loop cost ~3fps of scrolling there),
- * and reduced motion gets no dots.
+ * table; the loop runs only while the cover is on screen and the tab is visible. Weaker phones
+ * (html.lite) get the dots parked mid-edge with no loop; reduced motion gets no dots.
  */
 export default function CoverPackets({ paths, width, height }: { paths: string[]; width: number; height: number }) {
   const root = useRef<HTMLDivElement>(null);
@@ -59,7 +59,7 @@ export default function CoverPackets({ paths, width, height }: { paths: string[]
     });
     ro.observe(el);
 
-    const still = window.matchMedia("(max-width: 767px)").matches;
+    const still = isLite();
     let raf = 0, inView = false;
     const draw = (t: number) =>
       luts.forEach((pts, i) => {

@@ -128,7 +128,7 @@ export const projects: Project[] = [
   {
     slug: "celaris",
     color: "#3B82F6",
-    wireLabels: ["CRM", "invoice", "RLS"],
+    wireLabels: ["CRM", "invoice", "RLS", "Supabase", "Docker"],
     title: "Celaris",
     kind: "Multi-tenant SaaS",
     problem: "Growing teams juggle separate tools for clients, deals, projects and billing.",
@@ -144,7 +144,7 @@ export const projects: Project[] = [
   {
     slug: "ai-reel-pipeline",
     color: "#FF6B35",
-    wireLabels: ["script", "render", "QC"],
+    wireLabels: ["script", "render", "QC", "LangGraph", "Remotion"],
     title: "AI Reel Pipeline",
     kind: "Multi-agent system",
     problem: "Producing short-form vertical video by hand is slow and repetitive.",
@@ -156,7 +156,7 @@ export const projects: Project[] = [
   {
     slug: "crease",
     color: "#C8A27A",
-    wireLabels: ["scroll", "frames", "GSAP"],
+    wireLabels: ["scroll", "frames", "GSAP", "Lenis"],
     title: "CREASE Packaging",
     kind: "Cinematic landing page",
     problem: "Premium packaging is tactile — a flat page can't sell how it feels to open.",
@@ -171,7 +171,7 @@ export const projects: Project[] = [
   {
     slug: "event-saas",
     color: "#8B5CF6",
-    wireLabels: ["booking", "hall", "PHP"],
+    wireLabels: ["booking", "hall", "PHP", "MariaDB"],
     title: "EventSaaS",
     kind: "Full-stack SaaS",
     problem: "Marriage halls and event companies run bookings on paper and spreadsheets.",
@@ -186,7 +186,7 @@ export const projects: Project[] = [
   {
     slug: "pixel-mind",
     color: "#22C55E",
-    wireLabels: ["kernel", "histogram", "pixel"],
+    wireLabels: ["kernel", "histogram", "pixel", "Zustand", "Recharts"],
     title: "PixelMind",
     kind: "Browser image studio",
     problem: "Image-processing tools hide the math behind a single slider.",
@@ -201,7 +201,7 @@ export const projects: Project[] = [
   {
     slug: "arden-form",
     color: "#B07A4F",
-    wireLabels: ["WebGL", "3D", "scroll"],
+    wireLabels: ["WebGL", "3D", "scroll", "Three.js"],
     title: "Arden Form",
     kind: "Cinematic 3D brand website",
     problem: "A furniture brand needs its craft to feel physical on screen.",
@@ -322,12 +322,12 @@ export const experience = [
 
 /** Background wire fields behind the non-project sections: site accent + a few labels each. */
 export const sectionWires: Record<string, { color: string; labels: string[] }> = {
-  about: { color: "#FF6B35", labels: ["trigger", "profile"] },
-  skills: { color: "#FF6B35", labels: ["node", "palette", "n8n"] },
-  clients: { color: "#FF6B35", labels: ["batch", "items"] },
-  experience: { color: "#FF6B35", labels: ["run", "history"] },
-  services: { color: "#FF6B35", labels: ["template", "workflow"] },
-  contact: { color: "#FF6B35", labels: ["input", "send"] },
+  about: { color: "#FF6B35", labels: ["trigger", "profile", "JSON", "output"] },
+  skills: { color: "#FF6B35", labels: ["node", "palette", "n8n", "TypeScript", "Docker"] },
+  clients: { color: "#FF6B35", labels: ["batch", "items", "Next.js", "WhatsApp"] },
+  experience: { color: "#FF6B35", labels: ["run", "history", "Aevia", "CTO", "n8n"] },
+  services: { color: "#FF6B35", labels: ["template", "workflow", "SaaS", "agents", "n8n"] },
+  contact: { color: "#FF6B35", labels: ["input", "send", "email", "WhatsApp"] },
 };
 
 export const services = {

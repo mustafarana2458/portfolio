@@ -6,7 +6,8 @@ import { markSiteReady } from "@/lib/utils";
 /**
  * No preloader: the site is "ready" (deferred animations may start) once hydrated.
  * Also pauses every CSS animation inside sections that are off screen (the looping
- * "running" packets, pulses and carets), so they never tick while nobody can see them.
+ * "running" packets, pulses and carets), so they never tick while nobody can see them, and
+ * each node / looping element on its own while it isn't on screen (data-unseen).
  */
 export default function SiteReady() {
   useEffect(() => {
@@ -16,7 +17,14 @@ export default function SiteReady() {
       { rootMargin: "200px 0px" }
     );
     document.querySelectorAll("main > section, main article, footer").forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    const each = new IntersectionObserver((entries) =>
+      entries.forEach((e) => e.target.toggleAttribute("data-unseen", !e.isIntersecting))
+    );
+    document.querySelectorAll(".node, .loop-anim").forEach((el) => each.observe(el));
+    return () => {
+      io.disconnect();
+      each.disconnect();
+    };
   }, []);
   return null;
 }
