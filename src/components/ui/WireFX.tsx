@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { buildWireField, type WireCurve, type WireStrip } from "@/lib/wires";
-import { registerField, type FxStrip } from "@/lib/wireFx";
-import { cn, isLite } from "@/lib/utils";
+import { boostField, registerField, type FxStrip } from "@/lib/wireFx";
+import { isLite } from "@/lib/utils";
 
 type Kind = "project" | "section" | "card";
-const NONE: never[] = [];
 
 const STEPS = 16;
 const at = (c: WireCurve, t: number) => {
@@ -19,33 +18,33 @@ const PLUG_RUNS: { side: "in" | "out"; c: WireCurve }[] = [
   { side: "in", c: [0, 88, 40, 88, 60, 50, 100, 50] },
   { side: "out", c: [0, 50, 40, 50, 60, 12, 100, 12] },
 ];
+/** Client cards fade their strip out under the text (see CardWires): no packets there. */
+const CARD_MIN_X = 0.45;
 
 /** Keyframes for a packet along normalised curve `c`, mapped into the box (x, y, w, h). */
-function runFrames(c: WireCurve, x: number, y: number, w: number, h: number, fade = 0.1): Keyframe[] {
+function runFrames(c: WireCurve, x: number, y: number, w: number, h: number): Keyframe[] {
   const frames: Keyframe[] = [];
   for (let k = 0; k <= STEPS; k++) {
     const t = k / STEPS;
     const [px, py] = at(c, t);
-    frames.push({ transform: `translate3d(${x + px * w}px,${y + py * h}px,0)`, opacity: t < fade || t > 1 - fade ? 0 : 1, offset: t });
+    frames.push({ transform: `translate3d(${x + px * w}px,${y + py * h}px,0)`, opacity: t < 0.15 || t > 0.85 ? 0 : 1, offset: t });
   }
   return frames;
 }
 
 /**
  * The live part of a wire field (the static SVG stays as rendered):
- * - 2-3 idle packets on the top/bottom strips (Web Animations on transform/opacity, so they
- *   run on the compositor). Phones run 2.
+ * - Registers the field's strips with lib/wireFx, which runs the idle packets (a capped,
+ *   rotating page-wide pool: every visible edge gets packets), the cursor bend and click bursts.
  * - Project / client cards "execute" while hovered (desktop) or while the card is ≥60% on
  *   screen (touch): the field lights up in the card's colour (a cloned copy of the strips with
- *   edges at 40%, faded in with opacity), packets run 2x, and 3 extra packets run into the
+ *   edges at 40%, faded in with opacity), its packets run 2x, and 3 extra packets run into the
  *   card's ports (client cards: along the card's strip).
- * - Registers the field with lib/wireFx (cursor bend + click bursts).
- * Everything runs only while the field is on screen. Reduced motion or html.lite: nothing.
+ * Reduced motion or html.lite: nothing runs.
  */
 export default function WireFX({ seed, labels, across, color, kind }: { seed: string; labels: string[]; across?: number; color: string; kind: Kind }) {
   const root = useRef<HTMLDivElement>(null);
   const f = useMemo(() => buildWireField(seed, labels, across ? { across } : undefined), [seed, labels, across]);
-  const base = kind === "card" ? NONE : f.packets;
   const extra = kind === "section" ? 0 : 3;
 
   useEffect(() => {
@@ -55,48 +54,30 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
     const strips: Record<string, WireStrip> = kind === "card" ? { card: f.bottom } : { top: f.top, bottom: f.bottom, left: f.left, right: f.right };
     const fxStrips: FxStrip[] = Object.entries(strips).flatMap(([name, s]) => {
       const sEl = field.querySelector<HTMLElement>(`:scope > [data-strip="${name}"]`);
-      return sEl ? [{ el: sEl, edges: s.edges, nodes: s.nodes }] : [];
+      return sEl ? [{ el: sEl, edges: s.edges, nodes: s.nodes, minX: kind === "card" ? CARD_MIN_X : undefined }] : [];
     });
     const unregister = registerField(field, color, fxStrips);
+    if (!extra) return unregister;
 
     const phone = window.matchMedia("(max-width: 767px)").matches;
-    const liveBase = phone ? base.slice(0, 2) : base;
     const dots = Array.from(el.children) as HTMLElement[];
-    const baseDots = dots.slice(0, base.length);
-    const extraDots = dots.slice(base.length);
-    let anims: Animation[] = [];
     let extras: Animation[] = [];
     let inView = false;
     let lit = false;
 
-    const syncPlay = () => {
-      anims.forEach((a) => {
-        a.updatePlaybackRate(lit ? 2 : 1);
-        if (inView) a.play();
-        else a.pause();
-      });
-      extras.forEach((a) => (lit && inView ? a.play() : a.cancel()));
-    };
+    const syncPlay = () => extras.forEach((a) => (lit && inView ? a.play() : a.cancel()));
 
     const build = () => {
-      anims.forEach((a) => a.cancel());
       extras.forEach((a) => a.cancel());
-      const fr = field.getBoundingClientRect();
-      anims = liveBase.map((p, i) => {
-        const strip = field.querySelector<HTMLElement>(`:scope > [data-strip="${p.strip}"]`)!;
-        const w = strip.clientWidth, h = strip.clientHeight, top = p.strip === "top" ? 0 : fr.height - h;
-        const a = baseDots[i].animate(runFrames(p.c, 0, top, w, h), { duration: 3400 + i * 700, delay: i * 900, iterations: Infinity, easing: "ease-in-out" });
-        a.pause();
-        return a;
-      });
       if (kind === "project") {
+        const fr = field.getBoundingClientRect();
         const plugs = Object.fromEntries(
           Array.from(field.querySelectorAll<SVGSVGElement>(":scope > [data-plug]")).map((p) => [p.dataset.plug!, p.getBoundingClientRect()])
         );
         extras = PLUG_RUNS.flatMap((run, i) => {
           const r = plugs[run.side];
           if (!r || !r.width) return [];
-          const a = extraDots[i].animate(runFrames(run.c, r.left - fr.left, r.top - fr.top, r.width, r.height, 0.15), {
+          const a = dots[i].animate(runFrames(run.c, r.left - fr.left, r.top - fr.top, r.width, r.height), {
             duration: 1100,
             delay: i * 360,
             iterations: Infinity,
@@ -105,12 +86,14 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
           a.cancel();
           return [a];
         });
-      } else if (kind === "card") {
+      } else {
         const strip = fxStrips[0]?.el;
-        const longest = [...f.bottom.edges].filter((e) => !phone || e.mobile).sort((p, q) => q.c[6] - q.c[0] - (p.c[6] - p.c[0]));
+        const longest = f.bottom.edges
+          .filter((e) => (!phone || e.mobile) && Math.max(e.c[0], e.c[6]) >= CARD_MIN_X)
+          .sort((p, q) => q.c[6] - q.c[0] - (p.c[6] - p.c[0]));
         extras = strip
           ? longest.slice(0, extra).map((e, i) => {
-              const a = extraDots[i].animate(runFrames(e.c, 0, 0, strip.clientWidth, strip.clientHeight), {
+              const a = dots[i].animate(runFrames(e.c, 0, 0, strip.clientWidth, strip.clientHeight), {
                 duration: 1300 + i * 250,
                 delay: i * 300,
                 iterations: Infinity,
@@ -144,7 +127,7 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
             const svg = child.cloneNode(true) as SVGSVGElement;
             svg.querySelectorAll("path").forEach((p) => p.setAttribute("stroke-opacity", "0.4"));
             wrap.appendChild(svg);
-          } else if (child.tagName === "SPAN") {
+          } else if (child.tagName === "SPAN" && !child.hasAttribute("aria-hidden")) {
             const n = child.cloneNode() as HTMLSpanElement;
             n.style.borderColor = color;
             wrap.appendChild(n);
@@ -158,6 +141,7 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
       lit = on;
       if (on && !built) buildLit();
       field.toggleAttribute("data-wire-lit", on);
+      boostField(field, on);
       syncPlay();
     };
 
@@ -165,9 +149,7 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
     const hoverRoot =
       kind === "project"
         ? field.parentElement?.querySelector<HTMLElement>(":scope > [data-hover-root]")
-        : kind === "card"
-          ? field.closest<HTMLElement>("[data-hover-root]")
-          : null;
+        : field.closest<HTMLElement>("[data-hover-root]");
     const off: (() => void)[] = [];
     if (hoverRoot) {
       if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
@@ -202,24 +184,16 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
       off.forEach((o) => o());
       ro.disconnect();
       io.disconnect();
-      anims.forEach((a) => a.cancel());
       extras.forEach((a) => a.cancel());
       unregister();
     };
-  }, [f, kind, color, base, extra]);
+  }, [f, kind, color, extra]);
 
   return (
     <div ref={root} className="absolute inset-0 motion-reduce:hidden">
-      {base.map((_, i) => (
-        <span
-          key={i}
-          className={cn("absolute left-[-3px] top-[-3px] h-[6px] w-[6px] rounded-full", i >= 2 && "max-md:hidden")}
-          style={{ background: color, boxShadow: `0 0 8px 2px ${color}55`, opacity: 0 }}
-        />
-      ))}
       {Array.from({ length: extra }, (_, i) => (
         <span
-          key={`x${i}`}
+          key={i}
           className="absolute left-[-3px] top-[-3px] h-[6px] w-[6px] rounded-full"
           style={{ background: color, boxShadow: `0 0 8px 2px ${color}77`, opacity: 0 }}
         />

@@ -7,14 +7,24 @@
 //   with fixed endpoints, done with `transform` only. Overlays are built lazily per strip, the
 //   first time something near it needs them, and are layers only while they're lit.
 // - Click on empty background: packets ripple out along the nearest edges (≤1 burst / 500ms).
+// - Idle packets: every visible edge of the on-screen fields is a "slot" (long edges: two).
+//   One page-wide pool of packets (≤16 on phones, ≤30 on desktop) serves them. Each packet
+//   makes one trip (Web Animation, transform/opacity) and then takes the next slot: when there
+//   are more slots than the cap, slots rotate through a queue so no edge stays dead; when there
+//   are fewer, each slot keeps its own packet. Random start offsets and speeds keep them out
+//   of sync. A field being hovered / "executing" runs its packets at 2x.
 // - Only fields that are on screen are looked at. The static SVG base is never touched.
 import type { WireCurve, WireNode } from "@/lib/wires";
 
 type Pt = { x: number; y: number };
-export type FxStrip = { el: HTMLElement; edges: { c: WireCurve; mobile: boolean }[]; nodes: WireNode[] };
-type Field = { el: HTMLElement; color: string; strips: FxStrip[] };
+/** `minX`: edges entirely left of it are masked out (client cards) and get no packets. */
+export type FxStrip = { el: HTMLElement; edges: { c: WireCurve; mobile: boolean }[]; nodes: WireNode[]; minX?: number };
+type Field = { el: HTMLElement; color: string; strips: FxStrip[]; boost: boolean };
+type Slot = { key: string; f: Field; s: FxStrip; i: number; n: number };
+type Packet = { el: HTMLSpanElement; slot: Slot | null; anim: Animation | null; v: number };
 
-type Geom = { v: number; x: number; y: number; w: number; h: number; samples: Float32Array[]; nodes: Float32Array };
+/** x, y: document px; ox, oy: offset inside the field box. */
+type Geom = { v: number; x: number; y: number; ox: number; oy: number; w: number; h: number; samples: Float32Array[]; nodes: Float32Array };
 type EdgeFx = { kind: "edge"; a: SVGSVGElement; b: SVGSVGElement; m: Pt; p0: Pt; p3: Pt };
 type NodeFx = { kind: "node"; el: HTMLSpanElement };
 type Live = (EdgeFx | NodeFx) & { k: number; t: number; flash: number; dx: number; dy: number; tdx: number; tdy: number };
@@ -44,6 +54,12 @@ let pool: HTMLSpanElement[] = [];
 let ring: HTMLSpanElement | null = null;
 let poolIdx = 0;
 let teardown: (() => void) | null = null;
+const packets: Packet[] = [];
+let slots = new Map<string, Slot>();
+let queue: Slot[] = [];
+let planTimer = 0;
+const fieldIds = new WeakMap<Field, number>();
+let nextFieldId = 0;
 
 const at = (c: WireCurve, t: number): Pt => {
   const u = 1 - t, w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
@@ -68,7 +84,7 @@ function geom(s: FxStrip): Geom {
   });
   const nodes = new Float32Array(s.nodes.length * 2);
   s.nodes.forEach((n, i) => ((nodes[i * 2] = n.x * w), (nodes[i * 2 + 1] = n.y * h)));
-  const next = { v: version, x: r.left + window.scrollX, y: r.top + window.scrollY, w, h, samples, nodes };
+  const next = { v: version, x: r.left + window.scrollX, y: r.top + window.scrollY, ox: s.el.offsetLeft, oy: s.el.offsetTop, w, h, samples, nodes };
   geoms.set(s, next);
   const fx = fxs.get(s);
   if (fx && (Math.abs(fx.w - w) > 1 || Math.abs(fx.h - h) > 1)) {
@@ -244,6 +260,144 @@ const schedule = () => {
   if (!raf) raf = requestAnimationFrame(frame);
 };
 
+// ── idle packets ─────────────────────────────────────────────────────────────
+
+const LONG = 280; // px: edges longer than this carry two packets
+const cap = () => (phone ? 16 : 30);
+const edgeLen = (a: Float32Array) => {
+  let len = 0;
+  for (let k = 1; k < SAMPLES; k++) len += Math.hypot(a[k * 2] - a[k * 2 - 2], a[k * 2 + 1] - a[k * 2 - 1]);
+  return len;
+};
+const schedulePlan = () => {
+  window.clearTimeout(planTimer);
+  planTimer = window.setTimeout(plan, 120);
+};
+
+/** Rebuild the slot list from the on-screen fields and hand slots to packets (reads layout). */
+function plan() {
+  const next = new Map<string, Slot>();
+  for (const f of onScreen) {
+    let id = fieldIds.get(f);
+    if (id === undefined) fieldIds.set(f, (id = nextFieldId++));
+    f.strips.forEach((s, si) => {
+      const g = geom(s);
+      if (!g.w || !g.h) return;
+      s.edges.forEach((e, i) => {
+        if (!allowed(e.mobile) || (s.minX && Math.max(e.c[0], e.c[6]) < s.minX)) return;
+        const count = edgeLen(g.samples[i]) > LONG ? 2 : 1;
+        for (let n = 0; n < count; n++) {
+          const key = `${id}:${si}:${i}:${n}`;
+          next.set(key, slots.get(key) ?? { key, f, s, i, n });
+        }
+      });
+    });
+  }
+  slots = next;
+  // Drop packets whose slot is gone or whose geometry is stale; keep the rest running.
+  const held = new Set<string>();
+  for (const p of packets) {
+    if (p.slot && (!slots.has(p.slot.key) || p.v !== version)) release(p);
+    if (p.slot) held.add(p.slot.key);
+  }
+  queue = shuffle([...slots.values()].filter((sl) => !held.has(sl.key)));
+  const target = Math.min(cap(), slots.size);
+  let busy = packets.filter((p) => p.slot).length;
+  while (busy < target && queue.length) {
+    const p = packets.find((x) => !x.slot) ?? newPacket();
+    run(p, queue.shift()!, true);
+    busy++;
+  }
+  // over the cap (e.g. after a resize to phone width): retire the extras
+  const running = packets.filter((p) => p.slot);
+  while (running.length > target) {
+    const p = running.pop()!;
+    queue.push(p.slot!);
+    release(p);
+  }
+}
+
+/** Next queued slot that still exists (skips ones whose field has left the screen). */
+function takeQueued() {
+  let q = queue.shift();
+  while (q && !slots.has(q.key)) q = queue.shift();
+  return q;
+}
+
+function shuffle<T>(a: T[]) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function newPacket(): Packet {
+  const el = document.createElement("span");
+  el.setAttribute("aria-hidden", "true");
+  el.style.cssText = "position:absolute;left:-3px;top:-3px;width:6px;height:6px;border-radius:9999px;opacity:0;pointer-events:none";
+  const p: Packet = { el, slot: null, anim: null, v: version };
+  packets.push(p);
+  return p;
+}
+
+function release(p: Packet) {
+  if (p.anim) {
+    p.anim.onfinish = null;
+    p.anim.cancel();
+  }
+  p.anim = null;
+  p.slot = null;
+  p.el.remove();
+}
+
+/** One trip along the slot's edge, then on to the next slot. */
+function run(p: Packet, slot: Slot, first: boolean) {
+  const g = geom(slot.s);
+  const c = slot.s.edges[slot.i].c;
+  const len = edgeLen(g.samples[slot.i]);
+  const frames: Keyframe[] = [];
+  for (let k = 0; k <= 16; k++) {
+    const t = k / 16;
+    const q = at(c, t);
+    frames.push({ transform: `translate3d(${(g.ox + q.x * g.w).toFixed(1)}px,${(g.oy + q.y * g.h).toFixed(1)}px,0)`, opacity: t < 0.1 || t > 0.9 ? 0 : 1, offset: t });
+  }
+  const speed = (phone ? 55 : 85) + Math.random() * 50; // px/s, varied per trip
+  const duration = Math.max(1400, Math.min(6000, (len / speed) * 1000));
+  // In the field box, not the strip: a strip has a fade mask on desktop, and animating inside a
+  // masked element costs a mask render surface per strip.
+  if (p.el.parentElement !== slot.f.el) slot.f.el.appendChild(p.el);
+  const color = slot.f.color;
+  p.el.style.background = color;
+  p.el.style.boxShadow = `0 0 8px 2px ${color}55`;
+  p.slot = slot;
+  p.v = version;
+  // first trip: random offset (a long edge's second packet starts about half a trip behind)
+  const delay = first ? Math.random() * duration * 0.5 + slot.n * duration * 0.5 : 150 + Math.random() * 700;
+  const a = p.el.animate(frames, { duration, delay, easing: "ease-in-out" });
+  if (slot.f.boost) a.updatePlaybackRate(2);
+  a.onfinish = () => {
+    if (p.anim !== a) return;
+    let nextSlot: Slot | undefined = slot;
+    if (!slots.has(slot.key)) nextSlot = takeQueued();
+    else if (slots.size > cap()) {
+      queue.push(slot); // rotate: this edge waits, the longest-waiting one goes next
+      nextSlot = takeQueued();
+    }
+    if (nextSlot && slots.has(nextSlot.key)) run(p, nextSlot, false);
+    else release(p);
+  };
+  p.anim = a;
+}
+
+/** Hovered / executing card: its packets run at 2x. */
+export function boostField(el: HTMLElement, on: boolean) {
+  const f = [...fields].find((x) => x.el === el);
+  if (!f || f.boost === on) return;
+  f.boost = on;
+  for (const p of packets) if (p.slot?.f === f) p.anim?.updatePlaybackRate(on ? 2 : 1);
+}
+
 // ── click burst ──────────────────────────────────────────────────────────────
 
 const NOT_EMPTY = ".node, a, button, input, textarea, select, label, summary, [role], [contenteditable], header, nav, dialog, [data-no-burst]";
@@ -349,6 +503,7 @@ function init() {
         if (!f) return;
         if (e.isIntersecting) onScreen.add(f);
         else onScreen.delete(f);
+        schedulePlan();
       }),
     { rootMargin: "60px 0px" }
   );
@@ -356,6 +511,7 @@ function init() {
     version++;
     phone = phoneMq.matches;
     schedule();
+    schedulePlan();
   };
   const main = document.getElementById("main");
   const ro = main ? new ResizeObserver(bump) : null;
@@ -389,6 +545,11 @@ function init() {
     document.removeEventListener("click", onClick);
     cancelAnimationFrame(raf);
     raf = 0;
+    window.clearTimeout(planTimer);
+    packets.forEach(release);
+    packets.length = 0;
+    slots = new Map();
+    queue = [];
     live.clear();
     layer?.remove();
     layer = null;
@@ -399,7 +560,7 @@ function init() {
 /** Called by <WireFX> (only when motion is allowed and the device isn't html.lite). */
 export function registerField(el: HTMLElement, color: string, strips: FxStrip[]) {
   if (!io) init();
-  const f: Field = { el, color, strips };
+  const f: Field = { el, color, strips, boost: false };
   strips.forEach((s) => colors.set(s, color));
   fields.add(f);
   io!.observe(el);
@@ -407,6 +568,7 @@ export function registerField(el: HTMLElement, color: string, strips: FxStrip[])
     io?.unobserve(el);
     fields.delete(f);
     onScreen.delete(f);
+    schedulePlan();
     strips.forEach((s) => {
       const fx = fxs.get(s);
       fx?.edges.forEach((l) => l && live.delete(l));

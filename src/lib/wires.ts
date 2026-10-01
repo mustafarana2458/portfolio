@@ -18,8 +18,6 @@ export type WireField = {
   right: WireStrip;
   /** Up to 5 labels on top/bottom strip nodes (normalised to that strip). */
   labels: { strip: "top" | "bottom"; x: number; y: number; text: string }[];
-  /** Up to 3 top/bottom edges for the moving packets. */
-  packets: { strip: "top" | "bottom"; c: WireCurve }[];
 };
 
 const hash = (s: string) => {
@@ -95,13 +93,7 @@ export function buildWireField(seed: string, labels: string[], { across = 9, dow
     spots[best].n.big = true;
     return { strip: spots[best].strip, x: spots[best].n.x, y: spots[best].n.y, text };
   });
-  // Packets: the longest edges of each horizontal strip.
-  const longest = (s: WireStrip) => [...s.edges].sort((p, q) => q.c[6] - q.c[0] - (p.c[6] - p.c[0]));
-  const packets = [
-    ...longest(top).slice(0, 2).map((e) => ({ strip: "top" as const, c: e.c })),
-    ...longest(bottom).slice(0, 1).map((e) => ({ strip: "bottom" as const, c: e.c })),
-  ];
-  return { top, bottom, left, right, labels: picked, packets };
+  return { top, bottom, left, right, labels: picked };
 }
 
 /** Normalised cubic → SVG path in a 1000x1000 viewBox. */
