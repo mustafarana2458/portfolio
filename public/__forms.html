@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>Forms</title>
+  </head>
+  <body>
+    <!-- Netlify Forms detection for the static export. Field names must match ContactForm.tsx. -->
+    <form name="contact" data-netlify="true" netlify-honeypot="bot-field" hidden>
+      <input name="bot-field" />
+      <input name="name" />
+      <input name="email" type="email" />
+      <select name="service">
+      <option value="General enquiry">General enquiry</option>
+      <option value="Web apps &amp; SaaS">Web apps &amp; SaaS</option>
+      <option value="Business websites">Business websites</option>
+      <option value="AI automation &amp; n8n">AI automation &amp; n8n</option>
+      <option value="AI agents">AI agents</option>
+      </select>
+      <textarea name="message"></textarea>
+    </form>
+  </body>
+</html>

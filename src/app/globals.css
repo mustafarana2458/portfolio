@@ -1,0 +1,302 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens: the only place colors are defined ── */
+:root {
+  --bg: 12 12 14; /* #0C0C0E */
+  --surface: 22 22 26; /* #16161A */
+  --fg: 242 237 230; /* #F2EDE6 */
+  --muted: 143 138 131; /* #8F8A83 */
+  --accent: 255 107 53; /* #FF6B35: data flow only (packets, active edges, running, CTAs) */
+  --accent-hover: 255 133 85; /* #FF8555 */
+  --ok: 74 222 128; /* #4ADE80: success status only */
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --nav-h: 72px;
+  --node-header-h: 44px; /* the global pipeline enters/leaves nodes at the header's centre */
+  --gutter: 1.25rem;
+  color-scheme: dark;
+}
+@media (min-width: 768px) {
+  :root {
+    --gutter: 2rem;
+  }
+}
+@media (min-width: 1024px) {
+  :root {
+    --gutter: 2.5rem;
+  }
+}
+
+/* <main> is one composited layer and the global pipeline (z -1 inside it) paints beneath
+   all of its content. When the pipeline's moving layers sat between content in z-order,
+   Chrome had to re-test overlap and re-squash everything above them on every scroll frame
+   (measured: 34.6 → 50.1 fps on desktop). Nothing inside <main> is position: fixed. */
+#main {
+  will-change: transform;
+}
+
+@layer base {
+  /* Fluid root size: 16px on phones and laptops, ~17px at 1440, 18px from ~1700 up.
+     Everything rem-based (type, spacing, buttons) scales with it on large screens. */
+  html {
+    font-size: clamp(16px, 13px + 0.3vw, 18px);
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-bg font-sans text-fg;
+    overflow-x: clip;
+    /* Workflow-editor canvas: faint dotted grid that scrolls with the page */
+    background-image: radial-gradient(rgb(255 255 255 / 0.075) 1px, transparent 1.2px);
+    background-size: 24px 24px;
+    background-position: 12px 12px;
+  }
+  ::selection {
+    background: rgb(var(--accent) / 0.35);
+    color: rgb(var(--fg));
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    letter-spacing: -0.03em;
+  }
+}
+
+@layer components {
+  /* Content is 1280px max; featured project nodes get 1440px. Side gutters stay small. */
+  .container {
+    width: 100%;
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+    max-width: calc(1280px + 2 * var(--gutter));
+  }
+  .container-wide {
+    max-width: calc(1440px + 2 * var(--gutter));
+  }
+  .eyebrow {
+    @apply font-mono text-[13px] uppercase tracking-[0.16em] text-muted;
+  }
+  /* Section headings: up to 96px. */
+  .h-section {
+    font-size: clamp(2.5rem, 1rem + 4.4vw, 96px);
+    @apply font-semibold leading-[1.02];
+  }
+  .section {
+    @apply relative py-24 md:py-32;
+  }
+  .tag {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-bg/60 px-2.5 py-1 font-mono text-[12px] text-muted;
+  }
+  /* Serif italic accent inside Space Grotesk headings */
+  .accent-serif {
+    font-family: var(--font-serif), Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Node: the building block of the pipeline ── */
+  .node {
+    @apply relative rounded-2xl border border-line bg-surface/95;
+    z-index: 2; /* the global pipeline sits at z -1, under all of main's content */
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 20px 60px -30px rgb(0 0 0 / 0.8);
+  }
+  .node-header {
+    @apply relative flex items-center gap-2.5 border-b border-line px-5 font-mono text-[13px] text-muted;
+    height: var(--node-header-h);
+  }
+  /* Executing: the border flashes accent for ~400ms (set by executeNode, see lib/pipeline.ts). */
+  .node[data-flash]::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    border: 1px solid rgb(var(--accent));
+    box-shadow: 0 0 0 1px rgb(var(--accent) / 0.25), 0 0 32px -4px rgb(var(--accent) / 0.45);
+    pointer-events: none;
+    z-index: 3;
+    animation: node-flash 0.42s ease-out forwards;
+    will-change: opacity; /* only exists for the 0.42s flash */
+  }
+  @media (max-width: 767px) {
+    .node[data-flash]::before {
+      box-shadow: none;
+    }
+  }
+  /* While a node runs, a packet crosses its header edge (transform-only). */
+  .node[data-state="running"] > .node-header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -4px;
+    height: 8px;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 50%, rgb(var(--accent)) 0 3px, rgb(var(--accent) / 0.35) 4px, transparent 9px) no-repeat center / 24px 8px;
+    animation: packet-run 0.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  .node-port {
+    position: absolute;
+    top: calc(var(--node-header-h) / 2);
+    width: 10px;
+    height: 10px;
+    margin-top: -5px;
+    border-radius: 9999px;
+    border: 1px solid var(--line-strong);
+    background: rgb(var(--bg));
+    /* no colour transition: state flips are instant (a colour transition repaints the node
+       every frame); the composited border flash marks the execution */
+  }
+  .node-port[data-port="in"] {
+    left: -5px;
+  }
+  .node-port[data-port="out"] {
+    right: -5px;
+  }
+  .node-dot {
+    position: relative;
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: rgb(var(--muted) / 0.45);
+  }
+  .node-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: inherit;
+    opacity: 0;
+  }
+  .node-meta > span {
+    display: none;
+  }
+  /* State is set on the node root (data-state) and only styles its own header/ports. */
+  .node[data-state="idle"] > .node-header .meta-idle,
+  .node[data-state="running"] > .node-header .meta-running,
+  .node[data-state="success"] > .node-header .meta-success {
+    display: inline;
+  }
+  .node[data-state="running"] > .node-header .node-dot {
+    background: rgb(var(--accent));
+  }
+  .node[data-state="running"] > .node-header .node-dot::after {
+    animation: pulse-ring 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  .node[data-state="success"] > .node-header .node-dot {
+    background: rgb(var(--ok));
+  }
+  .node[data-state="running"] > .node-port {
+    border-color: rgb(var(--accent));
+  }
+  .node[data-state="success"] > .node-port {
+    border-color: rgb(var(--ok) / 0.55);
+  }
+  .node[data-state="success"] > .node-port[data-port="out"] {
+    background: rgb(var(--ok) / 0.55);
+  }
+
+  /* Word-mask used by <SplitReveal>. Padding keeps descenders from being clipped. */
+  .split-mask {
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: bottom;
+    padding-bottom: 0.2em;
+    margin-bottom: -0.2em;
+  }
+  .split-word {
+    display: inline-block;
+  }
+}
+
+/* Native smooth anchors when Lenis is off (touch devices) */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* Custom cursor hides the native one only when active (fine pointers). */
+html.has-cursor,
+html.has-cursor a,
+html.has-cursor button {
+  cursor: none;
+}
+html.has-cursor input,
+html.has-cursor textarea,
+html.has-cursor select {
+  cursor: auto;
+}
+
+/* Phones: looping status animations are static. The composited border flash still marks
+   each execution. */
+@media (max-width: 767px) {
+  .node[data-state="running"] > .node-header::after,
+  .node[data-state="running"] > .node-header .node-dot::after,
+  .loop-anim {
+    animation: none !important;
+  }
+}
+
+/* Looping animations stop while their section is off screen (see SiteReady). */
+/* Scoped to the looping elements: a [data-offscreen] * rule would re-match every element in
+   the section each time it enters or leaves the viewport. */
+[data-offscreen] .loop-anim,
+[data-offscreen] .node-header::after,
+[data-offscreen] .node-dot::after {
+  animation-play-state: paused !important;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes packet-run {
+  0% { transform: translateX(-50%); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateX(50%); opacity: 0; }
+}
+@keyframes node-flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes caret {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
