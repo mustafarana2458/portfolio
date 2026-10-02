@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "prepare-images": "node scripts/prepare-images.mjs",
+    "og-image": "node scripts/og-image.mjs",
     "build": "next build && next-image-export-optimizer",
     "start": "npx serve out -l 3000",
     "lint": "next lint",

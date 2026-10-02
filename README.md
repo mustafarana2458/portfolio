@@ -14,7 +14,9 @@ npm run dev              # http://localhost:3000
 npm run build            # static site in ./out (+ responsive WebP images)
 npm start                # serve ./out locally
 npm run prepare-images   # re-crop/compress raw files from ./images, cut out the portrait
-                         # background (@imgly, runs in its own process), regenerate og.png
+                         # background (@imgly, runs in its own process)
+npm run og-image         # public/og.png (1200×630): hero wire network + name/title/tagline in the
+                         # site's fonts (taken from the build, so run npm run build first)
 npm run capture          # every live URL in content.ts → ./captures/<slug>: stills + a deterministic
                          # frame-by-frame scroll-through at 1280x800 (no real-time recording, so a slow
                          # machine cannot drop frames). Sites with a REELS entry (CREASE) get a chapter

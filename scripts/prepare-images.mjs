@@ -10,9 +10,6 @@ const SRC = "images";
 const OUT = "public/images";
 mkdirSync(`${OUT}/projects`, { recursive: true });
 
-// Palette (keep in sync with src/app/globals.css)
-const C = { bg: "#0C0C0E", surface: "#16161A", fg: "#F2EDE6", muted: "#8F8A83", accent: "#FF6B35" };
-
 // ── Portrait: 4:5 crop around the subject → background removed → transparent PNG ──
 const portrait = sharp(`${SRC}/Image_20260930_230604_586.jpeg`);
 const { width } = await portrait.metadata();
@@ -59,19 +56,7 @@ for (const file of captures) {
   console.log(`${file}: ${Math.round(input.length / 1024)} KB → ${Math.round(out.length / 1024)} KB`);
 }
 
-// ── Open Graph card (1200×630) → public/og.png ──
-const og = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
-  <rect width="1200" height="630" fill="${C.bg}"/>
-  <g font-family="Segoe UI, Arial, Helvetica, sans-serif">
-    <text x="80" y="120" font-size="30" letter-spacing="6" fill="${C.muted}">GMR<tspan fill="${C.accent}">.</tspan></text>
-    <text x="80" y="380" font-size="80" font-weight="700" letter-spacing="-2" fill="${C.fg}">Ghulam Mustafa Rana</text>
-    <text x="80" y="450" font-size="42" fill="${C.fg}">Full-Stack &amp; <tspan fill="${C.accent}">AI Automation</tspan> Engineer</text>
-    <text x="80" y="550" font-size="26" fill="${C.muted}">Co-Founder &amp; CTO @ Aevia · Building Celaris · Lahore, Pakistan</text>
-  </g>
-  <rect x="80" y="585" width="64" height="4" rx="2" fill="${C.accent}"/>
-</svg>`;
-await sharp(Buffer.from(og)).png().toFile("public/og.png");
-console.log("og image written");
+// Open Graph card: scripts/og-image.mjs (npm run og-image), rendered with the site's fonts.
 
 // ── Apple touch icon from the SVG favicon ──
 await sharp("src/app/icon.svg", { density: 400 }).resize(180, 180).png().toFile("src/app/apple-icon.png");
