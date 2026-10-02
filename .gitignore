@@ -10,3 +10,5 @@ review-shots/
 *.log
 .DS_Store
 Thumbs.db
+# Screen recordings / promo exports (never committed)
+screen_recording/

@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────
 
 export const site = {
-  url: "https://mustafarana.dev", // TODO: replace with your real domain before deploying
+  url: "https://mustafarana.netlify.app",
   name: "Ghulam Mustafa Rana",
   initials: "GMR",
   title: "Full-Stack & AI Automation Engineer",
