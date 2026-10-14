@@ -1,5 +1,5 @@
-# Sync GitHub repos tagged "portfolio" onto the site (scripts/auto-projects.mjs), then commit the
-# data + media only if something changed. Netlify rebuilds on the push.
+# Sync my public GitHub repos that have a live website onto the site (scripts/auto-projects.mjs), then
+# commit the data + media only if something changed. Netlify rebuilds on the push.
 name: Auto projects
 
 on:

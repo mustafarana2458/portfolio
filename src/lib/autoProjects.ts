@@ -1,10 +1,11 @@
 // GitHub-synced projects (src/data/auto-projects.json, written by scripts/auto-projects.mjs).
 // Shown after the featured projects with the same card, and a /work/<slug> page built from the
-// README summary. Anything already in content.ts wins: same slug, repo or live URL is dropped
+// README summary. Only projects with a live site and a full capture (screenshot + video) get a
+// card. Anything already in content.ts wins: same slug, repo or live URL (or site.url) is dropped
 // here too, so editing content.ts takes effect without waiting for the next sync.
 // Malformed entries are skipped rather than breaking the build.
 import data from "@/data/auto-projects.json";
-import { caseStudies, clientWork, projects, type Project } from "@/data/content";
+import { caseStudies, clientWork, projects, site, type Project } from "@/data/content";
 
 export const AUTO_MAX = 12;
 /** Neutral wire tint, so synced projects read as secondary to the brand-coloured featured ones. */
@@ -41,7 +42,7 @@ const norm = (u?: string) => {
 const taken = {
   slugs: new Set([...projects.map((p) => p.slug), ...caseStudies.map((c) => c.slug)]),
   repos: new Set(projects.map((p) => p.github?.toLowerCase().replace(/\/+$/, "")).filter(Boolean)),
-  lives: new Set([...projects, ...clientWork].map((p) => norm(p.live)).filter(Boolean)),
+  lives: new Set([...[...projects, ...clientWork].map((p) => p.live), site.url].map(norm).filter(Boolean)),
 };
 
 function toProject(e: Record<string, unknown>): AutoProject | null {
@@ -59,6 +60,8 @@ function toProject(e: Record<string, unknown>): AutoProject | null {
   const description = str(e.description) ? e.description.trim() : intro;
   const video = local(m.video, "/videos/auto/");
   const poster = local(m.poster, "/images/projects/auto/");
+  const image = local(m.image, "/images/projects/auto/");
+  if (!homepage || !video || !poster || !image) return null; // live sites with a capture only
   const tags = Array.from(new Set([language, ...topics].filter(str))).slice(0, 6);
   return {
     auto: true,
@@ -69,11 +72,10 @@ function toProject(e: Record<string, unknown>): AutoProject | null {
     problem: description || `Source on GitHub: ${e.repo}.`,
     solution: "",
     tags,
-    image: local(m.image, "/images/projects/auto/"),
-    imageAlt: homepage ? `${e.title} homepage` : `${e.title} GitHub social preview`,
-    imageFit: m.imageFit === "contain" ? "contain" : "cover",
-    video: video && poster ? video : undefined,
-    poster: video && poster ? poster : undefined,
+    image,
+    imageAlt: `${e.title} homepage`,
+    video,
+    poster,
     color: NEUTRAL,
     wireLabels: (tags.length ? tags : ["repo", "GitHub"]).slice(0, 4),
     live: homepage,

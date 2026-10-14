@@ -1,23 +1,27 @@
-// Sync GitHub repos tagged with the "portfolio" topic into src/data/auto-projects.json, with the
+// Sync my public GitHub repos that have a live website into src/data/auto-projects.json, with the
 // same media as the featured projects (run daily by .github/workflows/auto-projects.yml).
 //
 //   public/images/projects/auto/<slug>.jpg         hero screenshot (1280×800)
-//   public/images/projects/auto/<slug>-2.jpg       mid-page section (case page gallery)
+//   public/images/projects/auto/<slug>-2.jpg       mid-page section (project page gallery)
 //   public/images/projects/auto/<slug>-poster.jpg  first video frame (card still)
 //   public/videos/auto/<slug>.mp4 / .webm / -m.mp4 desktop + phone hover previews
-//   public/images/projects/auto/<slug>-og.jpg      GitHub social preview (repos without a homepage)
 //
-// Capture + encode reuse scripts/capture-sites.mjs and scripts/prepare-videos.mjs. A repo is
-// (re)captured when it has no video yet, its homepage changed, or it was pushed since the last
-// capture. The README summary is extracted, never generated: first paragraph + "Features" bullets.
+// Included: every public repo of OWNER except forks, archived repos, repos with the topic
+// "no-portfolio", and repos already in content.ts (same repo, slug or live URL, or site.url).
+// A repo is added ONLY if it has a homepage URL that answers HTTP 200 and renders a page at
+// capture time, and the capture succeeds. No homepage or a broken site: skipped, no card.
+// An already-synced project keeps its last capture if its site later goes down (or a re-capture
+// fails); it is dropped only when it stops qualifying above (e.g. its homepage is removed).
+// A synced project is re-captured when its repo was pushed since the last capture or its homepage
+// changed. Capture + encode reuse scripts/capture-sites.mjs and scripts/prepare-videos.mjs.
+// The README summary is extracted, never generated: first paragraph + "Features" bullets.
 //
-// Safety: public repos only; repos already in content.ts (same repo, slug or live URL) are
-// skipped; at most MAX entries. If the GitHub API fails nothing is written (last data stays);
-// if one capture fails that project keeps its previous media. Always exits 0.
+// Safety: at most MAX entries. If the GitHub API fails nothing is written (last data stays).
+// Always exits 0.
 //
-// Usage: node scripts/auto-projects.mjs [--force] [--no-capture]
-// Env: GITHUB_TOKEN (optional locally; raises the rate limit and enables custom social previews).
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// Usage: node scripts/auto-projects.mjs [--force]
+// Env: GITHUB_TOKEN (optional locally; raises the API rate limit).
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -25,7 +29,7 @@ import { captureFrames, captureStills } from "./capture-sites.mjs";
 import { encodeClip } from "./prepare-videos.mjs";
 
 const OWNER = "mustafarana2458";
-const TOPIC = "portfolio";
+const OPT_OUT = "no-portfolio"; // repo topic that keeps a repo off the site
 const MAX = 12;
 const DATA = "src/data/auto-projects.json";
 const IMG_DIR = "public/images/projects/auto";
@@ -33,7 +37,6 @@ const VID_DIR = "public/videos/auto";
 const WORK = "captures/.auto"; // gitignored; prepare-videos.mjs skips it (no frames/ at this level)
 const CAPTURE_TIMEOUT = 6 * 60_000;
 const FORCE = process.argv.includes("--force");
-const NO_CAPTURE = process.argv.includes("--no-capture");
 const TOKEN = process.env.GITHUB_TOKEN;
 
 const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -45,11 +48,15 @@ const normUrl = (u) => {
     return null;
   }
 };
-const isHttp = (u) => {
+/** Repo homepage as an http(s) URL ("example.com" → "https://example.com/"), or null. */
+const homepageOf = (raw) => {
+  const v = (raw ?? "").trim();
+  if (!v) return null;
   try {
-    return ["http:", "https:"].includes(new URL(u).protocol);
+    const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`);
+    return ["http:", "https:"].includes(u.protocol) ? u.href : null;
   } catch {
-    return false;
+    return null;
   }
 };
 const pub = (p) => "/" + p.replace(/\\/g, "/").replace(/^public\//, ""); // file path → site path (also on Windows)
@@ -78,25 +85,6 @@ async function listRepos() {
     if (batch.length < 100) break;
   }
   return all;
-}
-
-/** The repo's social preview (custom one if set). GraphQL needs a token; otherwise the generated card. */
-async function socialPreviewUrl(repo) {
-  if (TOKEN) {
-    try {
-      const res = await fetch("https://api.github.com/graphql", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json", "User-Agent": `${OWNER}-portfolio-sync` },
-        body: JSON.stringify({
-          query: "query($o:String!,$n:String!){repository(owner:$o,name:$n){openGraphImageUrl}}",
-          variables: { o: repo.owner.login, n: repo.name },
-        }),
-      });
-      const url = (await res.json())?.data?.repository?.openGraphImageUrl;
-      if (url) return url;
-    } catch {}
-  }
-  return `https://opengraph.githubassets.com/1/${repo.full_name}`;
 }
 
 // ─── README summary (extracted, no AI) ──────────────────────
@@ -196,7 +184,8 @@ function contentKeys() {
   return {
     repos: new Set(all(/\bgithub: "https:\/\/github\.com\/([^"]+?)\/?"/g).map((r) => r.toLowerCase())),
     slugs: new Set(all(/\bslug: "([^"]+)"/g)),
-    lives: new Set(all(/\blive: "([^"]+)"/g).map(normUrl).filter(Boolean)),
+    // project / client live URLs, plus site.url (so this portfolio's own repo never lists itself)
+    lives: new Set(all(/\b(?:live|url): "(https?:[^"]+)"/g).map(normUrl).filter(Boolean)),
   };
 }
 
@@ -209,52 +198,90 @@ async function resetBrowser() {
   browser = null;
 }
 
-const withTimeout = (p, ms, what) =>
-  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} timed out after ${ms / 1000}s`)), ms))]);
+function withTimeout(p, ms, what) {
+  let timer;
+  const t = new Promise((_, rej) => (timer = setTimeout(() => rej(new Error(`${what} timed out after ${ms / 1000}s`)), ms)));
+  return Promise.race([p, t]).finally(() => clearTimeout(timer)); // a pending timer would keep node alive
+}
 
-/** Screenshot + scroll-through video of the homepage. Returns media paths (site paths). */
+/**
+ * Is the site up right now? The final response (after redirects) must be HTTP 200 and the page
+ * must render something visible: text, or a sizeable image / canvas / svg / video.
+ */
+async function probe(url) {
+  const context = await (await getBrowser()).newContext({ viewport: { width: 1280, height: 800 } });
+  try {
+    const page = await context.newPage();
+    const res = await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+    if (!res) throw new Error("no response");
+    if (res.status() !== 200) throw new Error(`HTTP ${res.status()}`);
+    await page.waitForTimeout(2000);
+    const rendered = await page.evaluate(() => {
+      const b = document.body;
+      if (!b || b.getBoundingClientRect().height < 50) return false;
+      if (b.innerText.trim().length > 20) return true;
+      return [...document.querySelectorAll("img, canvas, svg, video")].some((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 100 && r.height > 100;
+      });
+    });
+    if (!rendered) throw new Error("page did not render");
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
+/**
+ * Screenshot + scroll-through video of the homepage. Everything is built in a staging folder and
+ * only copied into public/ once all of it succeeded, so a failed re-capture never touches the
+ * last good one. Returns media paths (site paths).
+ */
 async function captureSite(slug, homepage, title) {
   const dir = join(WORK, slug);
+  const stage = join(dir, "out");
   rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(stage, { recursive: true });
   const site = { slug, title, live: homepage };
   const b = await getBrowser();
   await captureStills(b, site, dir);
   const { frames } = await captureFrames(b, site, dir);
   if (frames < 30) throw new Error(`only ${frames} frames`);
 
-  const image = join(IMG_DIR, `${slug}.jpg`);
-  const section = join(IMG_DIR, `${slug}-2.jpg`);
-  await sharp(join(dir, "hero.png")).jpeg({ quality: 84, mozjpeg: true }).toFile(image);
-  await sharp(join(dir, "section.png")).jpeg({ quality: 84, mozjpeg: true }).toFile(section);
-  const out = {
-    frames: join(dir, "frames"),
-    mp4: join(VID_DIR, `${slug}.mp4`),
-    webm: join(VID_DIR, `${slug}.webm`),
-    mobile: join(VID_DIR, `${slug}-m.mp4`),
-    poster: join(IMG_DIR, `${slug}-poster.jpg`),
+  const files = {
+    [join(IMG_DIR, `${slug}.jpg`)]: join(stage, "image.jpg"),
+    [join(IMG_DIR, `${slug}-2.jpg`)]: join(stage, "section.jpg"),
+    [join(IMG_DIR, `${slug}-poster.jpg`)]: join(stage, "poster.jpg"),
+    [join(VID_DIR, `${slug}.mp4`)]: join(stage, "video.mp4"),
+    [join(VID_DIR, `${slug}.webm`)]: join(stage, "video.webm"),
+    [join(VID_DIR, `${slug}-m.mp4`)]: join(stage, "video-m.mp4"),
   };
-  await encodeClip(out);
+  await sharp(join(dir, "hero.png")).jpeg({ quality: 84, mozjpeg: true }).toFile(join(stage, "image.jpg"));
+  await sharp(join(dir, "section.png")).jpeg({ quality: 84, mozjpeg: true }).toFile(join(stage, "section.jpg"));
+  await encodeClip({
+    frames: join(dir, "frames"),
+    mp4: join(stage, "video.mp4"),
+    webm: join(stage, "video.webm"),
+    mobile: join(stage, "video-m.mp4"),
+    poster: join(stage, "poster.jpg"),
+  });
+  for (const src of Object.values(files)) if (!existsSync(src)) throw new Error(`missing ${src}`);
+  for (const [dest, src] of Object.entries(files)) copyFileSync(src, dest);
   rmSync(dir, { recursive: true, force: true });
   return {
-    image: pub(image),
+    image: pub(join(IMG_DIR, `${slug}.jpg`)),
     imageFit: "cover",
-    video: pub(out.mp4),
-    poster: pub(out.poster),
-    gallery: [{ src: pub(section), caption: "Further down the page" }],
+    video: pub(join(VID_DIR, `${slug}.mp4`)),
+    poster: pub(join(IMG_DIR, `${slug}-poster.jpg`)),
+    gallery: [{ src: pub(join(IMG_DIR, `${slug}-2.jpg`)), caption: "Further down the page" }],
   };
 }
 
-async function socialPreview(repo, slug) {
-  const res = await fetch(await socialPreviewUrl(repo), { headers: { "User-Agent": `${OWNER}-portfolio-sync` } });
-  if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) throw new Error(`social preview ${res.status}`);
-  const dest = join(IMG_DIR, `${slug}-og.jpg`);
-  await sharp(Buffer.from(await res.arrayBuffer())).resize({ width: 1280, withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 84, mozjpeg: true }).toFile(dest);
-  // Social previews are 2:1, not 16:10: shown whole ("contain") instead of cropped.
-  return { image: pub(dest), imageFit: "contain", video: null, poster: null, gallery: [] };
-}
-
-const mediaExists = (m) => !!m?.image && existsSync(file(m.image)) && (!m.video || (existsSync(file(m.video)) && existsSync(file(m.poster))));
+/** A complete capture on disk: screenshot, poster and all three videos. */
+const mediaExists = (m) =>
+  !!m?.image &&
+  !!m.video &&
+  !!m.poster &&
+  [m.image, m.poster, m.video, m.video.replace(/\.mp4$/, ".webm"), m.video.replace(/\.mp4$/, "-m.mp4")].every((p) => existsSync(file(p)));
 
 // ─── main ───────────────────────────────────────────────────
 
@@ -282,18 +309,17 @@ async function main() {
   const keys = contentKeys();
   const skipped = [];
   const candidates = repos
-    .filter((r) => !r.private && (r.topics ?? []).includes(TOPIC))
+    .filter((r) => !r.private && !r.fork && !r.archived && !(r.topics ?? []).includes(OPT_OUT))
     .filter((r) => {
-      const slug = slugify(r.name);
-      const home = r.homepage && isHttp(r.homepage) ? normUrl(r.homepage) : null;
-      const dup = keys.repos.has(r.full_name.toLowerCase()) || keys.slugs.has(slug) || (home && keys.lives.has(home));
-      if (dup) skipped.push(r.full_name);
+      const home = homepageOf(r.homepage);
+      if (!home) return false; // no website: never a card
+      const dup = keys.repos.has(r.full_name.toLowerCase()) || keys.slugs.has(slugify(r.name)) || keys.lives.has(normUrl(home));
+      if (dup) skipped.push(r.name);
       return !dup;
     })
-    .sort((a, b) => (b.pushed_at ?? "").localeCompare(a.pushed_at ?? ""))
-    .slice(0, MAX);
+    .sort((a, b) => (b.pushed_at ?? "").localeCompare(a.pushed_at ?? ""));
   if (skipped.length) console.log(`• already in content.ts, skipped: ${skipped.join(", ")}`);
-  console.log(`• ${candidates.length} repo(s) with topic "${TOPIC}"`);
+  console.log(`• ${candidates.length} public repo(s) with a homepage to check`);
 
   mkdirSync(IMG_DIR, { recursive: true });
   mkdirSync(VID_DIR, { recursive: true });
@@ -301,50 +327,41 @@ async function main() {
   const seen = new Set();
 
   for (const r of candidates) {
+    if (next.length >= MAX) break;
     const slug = slugify(r.name);
     if (!slug || seen.has(slug)) continue;
-    seen.add(slug);
+    const homepage = homepageOf(r.homepage);
     const old = prev.find((e) => e.repo === r.full_name);
-    const homepage = r.homepage && isHttp(r.homepage) ? r.homepage : null;
+    const kept = old && mediaExists(old.media) ? old : null; // a complete earlier capture
 
-    let summary = old?.summary ?? { title: null, intro: "", features: [] };
+    let media = kept?.media ?? null;
+    let captured = { pushedAt: kept?.capturedPushedAt ?? null, at: kept?.capturedAt ?? null, homepage: kept?.homepageCaptured ?? null };
+    if (FORCE || !kept || captured.homepage !== homepage || captured.pushedAt !== r.pushed_at) {
+      process.stdout.write(`• ${slug}: ${homepage}\n`);
+      try {
+        await withTimeout(probe(homepage), 90_000, "live check");
+        media = await withTimeout(captureSite(slug, homepage, r.name), CAPTURE_TIMEOUT, "capture");
+        captured = { pushedAt: r.pushed_at, at: new Date().toISOString(), homepage };
+        console.log("  ✓ live, captured");
+      } catch (err) {
+        await resetBrowser();
+        const why = err.message.split("\n")[0];
+        if (!kept) {
+          console.log(`  ✗ skipped (${why})`);
+          continue; // never synced: no live site, no card
+        }
+        console.log(`  ✗ ${why}; keeping the last capture`);
+      }
+    }
+    seen.add(slug);
+
+    let summary = { title: null, intro: kept?.summary?.intro ?? "", features: kept?.summary?.features ?? [] };
     try {
       summary = summarize(await gh(`/repos/${r.full_name}/readme`, "application/vnd.github.raw+json"));
     } catch (err) {
       console.log(`  ${slug}: README unavailable (${err.message})`);
     }
-    const title = summary.title && summary.title.length <= 48 ? summary.title : prettyName(r.name);
-
-    let media = old?.media ?? null;
-    let captured = { pushedAt: old?.capturedPushedAt ?? null, at: old?.capturedAt ?? null, homepage: old?.homepage ?? null };
-    const pushedSince = captured.pushedAt !== r.pushed_at;
-    if (homepage) {
-      const need = FORCE || !media?.video || !mediaExists(media) || captured.homepage !== homepage || pushedSince;
-      if (need && !NO_CAPTURE) {
-        process.stdout.write(`• ${slug}: capturing ${homepage}\n`);
-        try {
-          media = await withTimeout(captureSite(slug, homepage, title), CAPTURE_TIMEOUT, "capture");
-          captured = { pushedAt: r.pushed_at, at: new Date().toISOString(), homepage };
-          console.log(`  ✓ captured`);
-        } catch (err) {
-          console.log(`  ✗ capture failed (${err.message.split("\n")[0]}); keeping previous media`);
-          await resetBrowser();
-        }
-      }
-    }
-    // No homepage, or no usable capture: the GitHub social preview card.
-    if (!homepage || !mediaExists(media)) {
-      const hasOg = media && !media.video && mediaExists(media);
-      if (!hasOg || pushedSince || FORCE) {
-        try {
-          media = await socialPreview(r, slug);
-          captured = { pushedAt: r.pushed_at, at: new Date().toISOString(), homepage };
-        } catch (err) {
-          console.log(`  ${slug}: social preview failed (${err.message})`);
-          if (!mediaExists(media)) media = null;
-        }
-      }
-    }
+    const title = summary.title && summary.title.length <= 48 ? summary.title : kept?.title ?? prettyName(r.name);
 
     next.push({
       repo: r.full_name,
@@ -354,7 +371,7 @@ async function main() {
       homepage,
       github: r.html_url,
       language: r.language ?? null,
-      topics: (r.topics ?? []).filter((t) => t !== TOPIC),
+      topics: r.topics ?? [],
       pushedAt: r.pushed_at,
       summary: { intro: summary.intro, features: summary.features },
       media,
@@ -364,25 +381,6 @@ async function main() {
     });
   }
   await resetBrowser();
-
-  // Prune media no entry references any more (repo untagged, renamed or deleted).
-  const used = new Set(
-    next.flatMap((e) => {
-      const m = e.media;
-      if (!m) return [];
-      const v = m.video ? [m.video, m.video.replace(/\.mp4$/, ".webm"), m.video.replace(/\.mp4$/, "-m.mp4")] : [];
-      return [m.image, m.poster, ...v, ...(m.gallery ?? []).map((g) => g.src)].filter(Boolean).map(file);
-    })
-  );
-  for (const dir of [IMG_DIR, VID_DIR]) {
-    for (const f of readdirSync(dir)) {
-      const p = join(dir, f);
-      if (!used.has(p) && !f.startsWith(".")) {
-        rmSync(p, { force: true });
-        console.log(`• removed stale ${p}`);
-      }
-    }
-  }
 
   const json =
     JSON.stringify(
@@ -395,6 +393,25 @@ async function main() {
     writeFileSync(DATA, json);
     console.log(`✓ wrote ${DATA} (${next.length} project(s))`);
   } else console.log("• no data changes");
+
+  // Then prune media no entry references any more (repo no longer qualifies, renamed or deleted).
+  // Files only: build output folders (next-image-export-optimizer) and dotfiles are left alone.
+  const used = new Set(
+    next.flatMap((e) => {
+      const m = e.media;
+      const v = [m.video, m.video.replace(/\.mp4$/, ".webm"), m.video.replace(/\.mp4$/, "-m.mp4")];
+      return [m.image, m.poster, ...v, ...(m.gallery ?? []).map((g) => g.src)].filter(Boolean).map(file);
+    })
+  );
+  for (const dir of [IMG_DIR, VID_DIR]) {
+    for (const f of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, f.name);
+      if (f.isFile() && !f.name.startsWith(".") && !used.has(p)) {
+        rmSync(p, { force: true });
+        console.log(`• removed stale ${p}`);
+      }
+    }
+  }
 }
 
 try {

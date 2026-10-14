@@ -26,7 +26,42 @@ npm run capture          # every live URL in content.ts → ./captures/<slug>: s
                          # out of frame). `npm run capture crease` captures one site.
 npm run prepare-videos   # frames → public/videos/<slug>.mp4 + .webm (30fps, -g 30, faststart, ≤1.5MB;
                          # 2MB for reels) and public/images/posters/<slug>.jpg (first frame)
+node scripts/auto-projects.mjs [--force]   # GitHub sync (see "Auto projects" below); normally run by CI
 ```
+
+## Auto projects (GitHub sync)
+
+`.github/workflows/auto-projects.yml` runs `scripts/auto-projects.mjs` daily (03:17 UTC) and on demand
+(*Actions → Auto projects → Run workflow*; tick **force** to re-capture everything). New projects show up
+after the featured ones with the same node card (neutral grey wires) and get a `/work/<slug>/` page.
+
+**Which repos.** Every public repo of `mustafarana2458` with a **homepage URL**, except:
+
+- forks and archived repos;
+- repos with the topic **`no-portfolio`** (add it to hide a repo);
+- repos already in `content.ts` (same GitHub repo, slug or live URL, or `site.url`). Entries in
+  `content.ts` always win, also on the site side, so they never appear twice.
+
+**Live sites only.** A repo is added only if its homepage answers **HTTP 200** and the page renders
+(visible text or media) at capture time, and the capture succeeds. No homepage, or a broken site, means
+no card at all. At most 12 projects, most recently pushed first.
+
+**Captures.** Same deterministic pipeline as `npm run capture` + `npm run prepare-videos`: 1280×800
+screenshot, mid-page still, poster, desktop MP4 + WebM and phone MP4, written to
+`public/images/projects/auto/` and `public/videos/auto/`. A synced project is re-captured when its repo
+is pushed or its homepage changes. Captures are built in a staging folder and copied in only when
+complete, so **if a synced site later goes down (or a re-capture fails) it keeps its last capture**.
+It is removed, with its media, only when it stops qualifying (homepage removed, `no-portfolio`, archived…).
+
+**Text.** `src/data/auto-projects.json` holds name, description, homepage, language, topics, media paths
+and a README summary: the first paragraph plus the bullets under a "Features"-style heading, extracted
+as-is (no AI). The card title is the README's `# heading` (≤48 chars) or the repo name. Write a repo
+description on GitHub: it is the card text.
+
+**Safety.** If the GitHub API fails nothing is written. The workflow runs lint + build before
+committing and pushes only when something changed, as `github-actions[bot]`; Netlify rebuilds on the
+push. It uses the built-in `GITHUB_TOKEN` only (needs *Settings → Actions → General → Workflow
+permissions → Read and write*); no other secrets.
 
 ### EventSaaS capture (local PHP app, fictional demo data)
 
@@ -86,10 +121,12 @@ real details or delete the line. The architecture diagram is built from `archite
 src/app/                  layout (fonts, metadata, JSON-LD), page, template (route transition),
                           work/[slug] (case studies), globals.css (tokens + node styles), sitemap, robots
 src/data/content.ts       all copy and data
+src/data/auto-projects.json  GitHub-synced projects (generated; see "Auto projects")
 src/lib/
   gsap.ts                 plugin registration, useDeferredGSAP
   pipeline.ts             executeNode(): idle → running → success on any <Node>
   palette.ts              ⌘K commands + fuzzy match
+  autoProjects.ts         loads + validates auto-projects.json (content.ts wins)
   transition.ts           route curtain
   contactIntent.ts        "Use template" → preselect service in the form
 src/components/
