@@ -15,6 +15,9 @@
 // A synced project is re-captured when its repo was pushed since the last capture or its homepage
 // changed. Capture + encode reuse scripts/capture-sites.mjs and scripts/prepare-videos.mjs.
 // The README summary is extracted, never generated: first paragraph + "Features" bullets.
+// Wire colour: a repo topic "color-xxxxxx" (hex) wins; otherwise the most prominent saturated
+// colour of the captured screenshot, lightened for the dark background (scripts/brand-color.mjs);
+// nothing usable → the site's orange.
 //
 // Safety: at most MAX entries. If the GitHub API fails nothing is written (last data stays).
 // Always exits 0.
@@ -27,6 +30,7 @@ import { chromium } from "playwright";
 import sharp from "sharp";
 import { captureFrames, captureStills } from "./capture-sites.mjs";
 import { encodeClip } from "./prepare-videos.mjs";
+import { brandColor, FALLBACK as FALLBACK_COLOR, topicColor } from "./brand-color.mjs";
 
 const OWNER = "mustafarana2458";
 const OPT_OUT = "no-portfolio"; // repo topic that keeps a repo off the site
@@ -265,6 +269,7 @@ async function captureSite(slug, homepage, title) {
     poster: join(stage, "poster.jpg"),
   });
   for (const src of Object.values(files)) if (!existsSync(src)) throw new Error(`missing ${src}`);
+  const extractedColor = await brandColor(join(dir, "hero.png")).catch(() => FALLBACK_COLOR); // lossless original
   for (const [dest, src] of Object.entries(files)) copyFileSync(src, dest);
   rmSync(dir, { recursive: true, force: true });
   return {
@@ -273,6 +278,7 @@ async function captureSite(slug, homepage, title) {
     video: pub(join(VID_DIR, `${slug}.mp4`)),
     poster: pub(join(IMG_DIR, `${slug}-poster.jpg`)),
     gallery: [{ src: pub(join(IMG_DIR, `${slug}-2.jpg`)), caption: "Further down the page" }],
+    extractedColor,
   };
 }
 
@@ -363,6 +369,12 @@ async function main() {
     }
     const title = summary.title && summary.title.length <= 48 ? summary.title : kept?.title ?? prettyName(r.name);
 
+    // Wire colour: a "color-xxxxxx" topic wins, else the colour taken from the capture's screenshot
+    // (it stays with that capture), else the site's orange.
+    if (!media.extractedColor) media = { ...media, extractedColor: await brandColor(file(media.image)).catch(() => FALLBACK_COLOR) };
+    const override = topicColor(r.topics);
+    const color = override ?? media.extractedColor;
+
     next.push({
       repo: r.full_name,
       slug,
@@ -371,9 +383,11 @@ async function main() {
       homepage,
       github: r.html_url,
       language: r.language ?? null,
-      topics: r.topics ?? [],
+      topics: (r.topics ?? []).filter((t) => !topicColor([t])), // colour topics aren't tech tags
       pushedAt: r.pushed_at,
       summary: { intro: summary.intro, features: summary.features },
+      color,
+      colorSource: override ? "topic" : color === FALLBACK_COLOR ? "fallback" : "screenshot",
       media,
       capturedAt: captured.at,
       capturedPushedAt: captured.pushedAt,
@@ -388,7 +402,7 @@ async function main() {
       null,
       2
     ) + "\n";
-  const before = existsSync(DATA) ? readFileSync(DATA, "utf8") : "";
+  const before = existsSync(DATA) ? readFileSync(DATA, "utf8").replace(/\r\n/g, "\n") : ""; // ignore CRLF checkouts
   if (json !== before) {
     writeFileSync(DATA, json);
     console.log(`✓ wrote ${DATA} (${next.length} project(s))`);

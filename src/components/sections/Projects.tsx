@@ -40,7 +40,7 @@ export default function Projects() {
               <ProjectNode p={p} i={i} />
             </li>
           ))}
-          {/* Synced from GitHub (public repos with a live site), same node, neutral wires. */}
+          {/* Synced from GitHub (public repos with a live site): same node, wires in the project's colour. */}
           {autoProjects.map((p, i) => (
             <li key={p.slug} className="relative">
               <WireField seed={p.slug} color={p.color} labels={p.wireLabels} />

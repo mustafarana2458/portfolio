@@ -26,7 +26,7 @@ npm run capture          # every live URL in content.ts → ./captures/<slug>: s
                          # out of frame). `npm run capture crease` captures one site.
 npm run prepare-videos   # frames → public/videos/<slug>.mp4 + .webm (30fps, -g 30, faststart, ≤1.5MB;
                          # 2MB for reels) and public/images/posters/<slug>.jpg (first frame)
-node scripts/auto-projects.mjs [--force]   # GitHub sync (see "Auto projects" below); normally run by CI
+node scripts/auto-projects.mjs [--force]   # GitHub sync + brand colours (see "Auto projects"); normally run by CI
 ```
 
 ## Auto projects (GitHub sync)
@@ -57,6 +57,19 @@ It is removed, with its media, only when it stops qualifying (homepage removed, 
 and a README summary: the first paragraph plus the bullets under a "Features"-style heading, extracted
 as-is (no AI). The card title is the README's `# heading` (≤48 chars) or the repo name. Write a repo
 description on GitHub: it is the card text.
+
+**Colour.** Each synced project gets a `color` used exactly like a `content.ts` project colour: wire
+field tint, hover glow (40%), packets and labels, plus accents on its `/work/<slug>/` page (eyebrow
+dot, media frame, timeline, bullets; CTAs stay orange). Where it comes from, in order:
+
+1. a repo topic **`color-xxxxxx`** (hex without `#`, e.g. `color-2563eb`; 3-digit hex works too), used as-is;
+2. the capture's screenshot (`scripts/brand-color.mjs`): the most prominent saturated colour, ignoring
+   near-white, near-black and greys, with its lightness raised until it reads on the dark background;
+3. the site's orange `#FF6B35` if nothing usable is found.
+
+`colorSource` in the JSON says which one applied. The extracted colour stays with the capture it came
+from; a topic change takes effect on the next run without a re-capture. Big hero photos can outweigh a
+small brand colour, so use the topic when the pick is off.
 
 **Safety.** If the GitHub API fails nothing is written. The workflow runs lint + build before
 committing and pushes only when something changed, as `github-actions[bot]`; Netlify rebuilds on the

@@ -22,7 +22,7 @@ export default function AutoProjectPage({ p, next }: { p: AutoProject; next: { s
       name: "Features",
       icon: "code",
       body: (
-        <ul className="list-disc space-y-2 pl-5 marker:text-fg/40">
+        <ul className="list-disc space-y-2 pl-5 marker:text-[var(--project)]">
           {p.features.map((f) => (
             <li key={f} className="leading-relaxed text-fg/85">
               {f}
@@ -47,14 +47,19 @@ export default function AutoProjectPage({ p, next }: { p: AutoProject; next: { s
     });
 
   return (
-    <article className="pb-24 pt-[calc(var(--nav-h)+2.5rem)]">
+    // --project: the project's colour (same one that tints its wires on the home page). Orange stays
+    // for data flow and CTAs; the project colour only marks this page's frame, timeline and bullets.
+    <article className="pb-24 pt-[calc(var(--nav-h)+2.5rem)]" style={{ ["--project" as string]: p.color }}>
       <div className="container">
         <TransitionLink href="/#work" className="inline-flex items-center gap-2 font-mono text-[12px] text-muted transition-colors hover:text-fg">
           <span aria-hidden>←</span> all workflows
         </TransitionLink>
 
         <header className="mt-8 max-w-4xl">
-          <p className="eyebrow mb-4">project · {p.kind.toLowerCase()}</p>
+          <p className="eyebrow mb-4 flex items-center gap-2">
+            <span aria-hidden className="h-2 w-2 rounded-full bg-[var(--project)] shadow-[0_0_8px_2px_color-mix(in_srgb,var(--project)_40%,transparent)]" />
+            project · {p.kind.toLowerCase()}
+          </p>
           <h1 className="text-[clamp(2.75rem,7vw,6rem)] font-semibold leading-[0.98]">{p.title}</h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted md:text-xl">{p.problem}</p>
           <div className="mt-8 flex flex-wrap items-center gap-2">
@@ -72,7 +77,7 @@ export default function AutoProjectPage({ p, next }: { p: AutoProject; next: { s
           </div>
         </header>
 
-        <div className="relative mt-12 overflow-hidden rounded-2xl border border-line md:mt-16">
+        <div className="relative mt-12 overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--project)_40%,transparent)] shadow-[0_0_48px_-16px_color-mix(in_srgb,var(--project)_40%,transparent)] md:mt-16">
           <CardMediaView media={media} title={p.title} kind={p.kind} slug={p.slug} sizes="(min-width: 1360px) 1264px, 92vw" priority hoverVideo={false} />
           {media.video && <CaseMedia mp4={media.video.mp4} webm={media.video.webm} poster={media.video.poster} label={`Scroll-through recording of ${p.title}`} />}
         </div>
@@ -97,10 +102,10 @@ export default function AutoProjectPage({ p, next }: { p: AutoProject; next: { s
           </section>
         ) : null}
 
-        <ol className="relative mt-20 space-y-10 before:absolute before:bottom-8 before:left-[18px] before:top-8 before:w-px before:bg-[var(--line-strong)] md:space-y-14 md:before:left-[26px]">
+        <ol className="relative mt-20 space-y-10 before:absolute before:bottom-8 before:left-[18px] before:top-8 before:w-px before:bg-[color-mix(in_srgb,var(--project)_40%,transparent)] md:space-y-14 md:before:left-[26px]">
           {steps.map((s, i) => (
             <li key={s.name} className="relative pl-10 md:pl-14">
-              <span aria-hidden className="absolute left-[14px] top-[15px] h-[9px] w-[9px] rounded-full border border-[var(--line-strong)] bg-bg md:left-[22px]" />
+              <span aria-hidden className="absolute left-[14px] top-[15px] h-[9px] w-[9px] rounded-full border border-[var(--project)] bg-bg md:left-[22px]" />
               <Node as="section" name={`${String(i + 1).padStart(2, "0")} · ${s.name}`} icon={s.icon} ports="none" bodyClassName="p-6 md:p-8">
                 <h2 className="sr-only">{s.name}</h2>
                 {s.body}

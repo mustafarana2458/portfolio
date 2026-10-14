@@ -8,8 +8,9 @@ import data from "@/data/auto-projects.json";
 import { caseStudies, clientWork, projects, site, type Project } from "@/data/content";
 
 export const AUTO_MAX = 12;
-/** Neutral wire tint, so synced projects read as secondary to the brand-coloured featured ones. */
-const NEUTRAL = "#A1A1AA";
+/** Wire colour when the data has none (or an invalid one): the site's orange accent, as in the sync. */
+const FALLBACK_COLOR = "#FF6B35";
+const hexColor = (v: unknown) => (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : FALLBACK_COLOR);
 
 export type AutoProject = Project & {
   auto: true;
@@ -55,7 +56,7 @@ function toProject(e: Record<string, unknown>): AutoProject | null {
   const m = (e.media ?? {}) as Record<string, unknown>;
   const summary = (e.summary ?? {}) as Record<string, unknown>;
   const language = str(e.language) ? e.language : undefined;
-  const topics = strs(e.topics);
+  const topics = strs(e.topics).filter((t) => !/^colou?r-/i.test(t) && t !== "no-portfolio"); // control topics, not tech
   const intro = str(summary.intro) ? summary.intro : "";
   const description = str(e.description) ? e.description.trim() : intro;
   const video = local(m.video, "/videos/auto/");
@@ -76,7 +77,7 @@ function toProject(e: Record<string, unknown>): AutoProject | null {
     imageAlt: `${e.title} homepage`,
     video,
     poster,
-    color: NEUTRAL,
+    color: hexColor(e.color), // brand colour from the capture, or a "color-xxxxxx" repo topic
     wireLabels: (tags.length ? tags : ["repo", "GitHub"]).slice(0, 4),
     live: homepage,
     github,
