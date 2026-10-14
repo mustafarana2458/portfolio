@@ -11,12 +11,14 @@
 //
 // Usage: node scripts/capture-sites.mjs [slug-filter]
 // Needs Google Chrome installed (Playwright drives it via channel "chrome").
+// scripts/auto-projects.mjs imports captureStills / captureFrames for GitHub-synced projects.
 import { chromium } from "playwright";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import sharp from "sharp";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const VIEWPORT = { width: 1280, height: 800 }; // 16:10, the card media aspect
+export const VIEWPORT = { width: 1280, height: 800 }; // 16:10, the card media aspect
 const INTRO_WAIT = 3000; // after load + fonts, for intro/preloader animations
 const OUT = "captures";
 
@@ -129,7 +131,7 @@ async function open(browser, site) {
 
 const scrollTo = (page, y) => page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), y);
 
-async function captureStills(browser, site, dir) {
+export async function captureStills(browser, site, dir) {
   const { context, page } = await open(browser, site);
   await page.screenshot({ path: join(dir, "hero.png") });
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -146,7 +148,7 @@ async function captureStills(browser, site, dir) {
   return { height, target };
 }
 
-async function captureFrames(browser, site, dir) {
+export async function captureFrames(browser, site, dir) {
   const framesDir = join(dir, "frames");
   rmSync(framesDir, { recursive: true, force: true });
   mkdirSync(framesDir, { recursive: true });
@@ -429,46 +431,50 @@ async function captureReel(browser, site, dir, reel) {
   return { frames: n, dupes, smooth };
 }
 
-const filter = process.argv[2];
-const sites = readProjects().filter((s) => !filter || s.slug.includes(filter));
-const browser = await chromium.launch({ channel: "chrome" });
-const promoted = [];
+async function main() {
+  const filter = process.argv[2];
+  const sites = readProjects().filter((s) => !filter || s.slug.includes(filter));
+  const browser = await chromium.launch({ channel: "chrome" });
+  const promoted = [];
 
-for (const site of sites) {
-  if (OVERRIDES[site.slug]?.skip) {
-    console.log(`• ${site.title.padEnd(20)} skipped (has its own capture script)`);
-    continue;
-  }
-  const dir = join(OUT, site.slug);
-  mkdirSync(dir, { recursive: true });
-  rmSync(join(dir, "scroll.mp4"), { force: true }); // old real-time recording
-  process.stdout.write(`• ${site.title.padEnd(20)} ${site.live}\n`);
-  try {
-    const t0 = Date.now();
-    const { height } = await captureStills(browser, site, dir);
-    if (REELS[site.slug]) {
-      const { frames, dupes, smooth } = await captureReel(browser, site, dir, REELS[site.slug]);
-      console.log(`  ✓ reel: ${frames} frames (${(frames / 30).toFixed(1)}s), canvas frames not confirmed: ${dupes}, smooth-scroll: ${smooth} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
-    } else {
-      const { frames, distance, smooth } = await captureFrames(browser, site, dir);
-      console.log(`  ✓ ${frames} frames, scrolled ${distance}px of ${height}px, smooth-scroll: ${smooth} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+  for (const site of sites) {
+    if (OVERRIDES[site.slug]?.skip) {
+      console.log(`• ${site.title.padEnd(20)} skipped (has its own capture script)`);
+      continue;
     }
-    if (!site.hasImage) {
-      const name = OVERRIDES[site.slug]?.name ?? site.slug;
-      copyFileSync(join(dir, "hero.png"), `public/images/projects/${name}.png`);
-      copyFileSync(join(dir, "section.png"), `public/images/projects/${name}-2.png`);
-      promoted.push(`${site.title} → /images/projects/${name}.png`);
+    const dir = join(OUT, site.slug);
+    mkdirSync(dir, { recursive: true });
+    rmSync(join(dir, "scroll.mp4"), { force: true }); // old real-time recording
+    process.stdout.write(`• ${site.title.padEnd(20)} ${site.live}\n`);
+    try {
+      const t0 = Date.now();
+      const { height } = await captureStills(browser, site, dir);
+      if (REELS[site.slug]) {
+        const { frames, dupes, smooth } = await captureReel(browser, site, dir, REELS[site.slug]);
+        console.log(`  ✓ reel: ${frames} frames (${(frames / 30).toFixed(1)}s), canvas frames not confirmed: ${dupes}, smooth-scroll: ${smooth} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+      } else {
+        const { frames, distance, smooth } = await captureFrames(browser, site, dir);
+        console.log(`  ✓ ${frames} frames, scrolled ${distance}px of ${height}px, smooth-scroll: ${smooth} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+      }
+      if (!site.hasImage) {
+        const name = OVERRIDES[site.slug]?.name ?? site.slug;
+        copyFileSync(join(dir, "hero.png"), `public/images/projects/${name}.png`);
+        copyFileSync(join(dir, "section.png"), `public/images/projects/${name}-2.png`);
+        promoted.push(`${site.title} → /images/projects/${name}.png`);
+      }
+    } catch (err) {
+      console.log(`  ✗ ${err.message.split("\n")[0]}`);
     }
-  } catch (err) {
-    console.log(`  ✗ ${err.message.split("\n")[0]}`);
   }
-}
-await browser.close();
+  await browser.close();
 
-console.log(`\nCaptured ${sites.length} site(s) into ./${OUT}/. Next: npm run prepare-videos`);
-if (promoted.length) {
-  console.log("Promoted (had no image; set `image:` in content.ts, then run npm run prepare-images):");
-  promoted.forEach((p) => console.log("  " + p));
+  console.log(`\nCaptured ${sites.length} site(s) into ./${OUT}/. Next: npm run prepare-videos`);
+  if (promoted.length) {
+    console.log("Promoted (had no image; set `image:` in content.ts, then run npm run prepare-images):");
+    promoted.forEach((p) => console.log("  " + p));
+  }
+  const leftovers = existsSync(OUT) ? readdirSync(OUT).filter((d) => !sites.some((s) => s.slug === d)) : [];
+  if (leftovers.length && !filter) console.log("Stale capture folders:", leftovers.join(", "));
 }
-const leftovers = existsSync(OUT) ? readdirSync(OUT).filter((d) => !sites.some((s) => s.slug === d)) : [];
-if (leftovers.length && !filter) console.log("Stale capture folders:", leftovers.join(", "));
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

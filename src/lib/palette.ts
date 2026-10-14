@@ -2,6 +2,7 @@
 
 import { caseStudies, clientWork, contact, projects } from "@/data/content";
 import { HERO_BURST_EVENT } from "./pipeline";
+import { autoProjects } from "./autoProjects";
 
 export const PALETTE_OPEN_EVENT = "palette:open";
 
@@ -33,7 +34,7 @@ export function buildCommands(): Command[] {
     { id: "contact", group: "Navigate", label: "Contact", keywords: "output form email message hire", run: ({ go }) => go("contact") },
   ];
 
-  projects.forEach((p) =>
+  [...projects, ...autoProjects].forEach((p) =>
     cmds.push({
       id: `project-${p.slug}`,
       group: "Projects",
@@ -53,6 +54,10 @@ export function buildCommands(): Command[] {
       run: ({ push }) => push(`/work/${c.slug}/`),
     });
   });
+
+  autoProjects.forEach((p) =>
+    cmds.push({ id: `case-${p.slug}`, group: "Case studies", label: `Project: ${p.title}`, keywords: "github readme", run: ({ push }) => push(`/work/${p.slug}/`) })
+  );
 
   cmds.push(
     {
@@ -107,7 +112,7 @@ export function buildCommands(): Command[] {
     { id: "linkedin", group: "Links", label: "LinkedIn", keywords: "profile", run: () => external(contact.linkedin) },
     { id: "github", group: "Links", label: "GitHub", keywords: "code repos", run: () => external(contact.github) }
   );
-  [...projects, ...clientWork].forEach((p) => {
+  [...projects, ...autoProjects, ...clientWork].forEach((p) => {
     if (p.live) cmds.push({ id: `live-${p.title}`, group: "Links", label: `Open ${p.title} (live)`, hint: new URL(p.live).hostname, run: () => external(p.live!) });
   });
   return cmds;

@@ -11,6 +11,8 @@ type MediaSource = {
   imageFit?: "cover" | "contain";
   keepImage?: boolean;
   video?: string;
+  /** Explicit poster path (GitHub-synced projects keep theirs next to their screenshots). */
+  poster?: string;
 };
 
 export type CardMedia = {
@@ -26,7 +28,7 @@ export function cardMedia(p: MediaSource): CardMedia {
         mp4: p.video,
         webm: p.video.replace(/\.mp4$/, ".webm"),
         mobile: p.video.replace(/\.mp4$/, "-m.mp4"), // 640px H.264 for phones (prepare-videos)
-        poster: p.video.replace(/^\/videos\//, "/images/posters/").replace(/\.mp4$/, ".jpg"),
+        poster: p.poster ?? p.video.replace(/^\/videos\//, "/images/posters/").replace(/\.mp4$/, ".jpg"),
       }
     : undefined;
   const usePoster = !!video && !p.keepImage;

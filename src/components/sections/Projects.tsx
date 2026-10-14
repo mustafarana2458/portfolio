@@ -7,12 +7,13 @@ import TransitionLink from "@/components/pipeline/TransitionLink";
 import { cn } from "@/lib/utils";
 import { cardMedia } from "@/lib/media";
 import WireField from "@/components/ui/WireField";
+import { autoProjects, type AutoProject } from "@/lib/autoProjects";
 
-const studied = new Set(caseStudies.map((c) => c.slug));
+const studied = new Set([...caseStudies.map((c) => c.slug), ...autoProjects.map((p) => p.slug)]);
 const host = (url: string) => new URL(url).hostname.replace(/^www\./, "");
 
 /** "Run metrics": derived from content.ts only, never invented numbers. */
-function runMetrics(p: Project) {
+function runMetrics(p: Project | AutoProject) {
   const m: [string, string][] = [["stack", `${p.tags.length} tools`]];
   m.push(["status", p.live ? "live" : p.private ? "private" : "repo"]);
   if (p.live) m.push(["host", host(p.live)]);
@@ -39,6 +40,13 @@ export default function Projects() {
               <ProjectNode p={p} i={i} />
             </li>
           ))}
+          {/* Synced from GitHub (topic "portfolio"), same node, neutral wires. */}
+          {autoProjects.map((p, i) => (
+            <li key={p.slug} className="relative">
+              <WireField seed={p.slug} color={p.color} labels={p.wireLabels} />
+              <ProjectNode p={p} i={projects.length + i} />
+            </li>
+          ))}
         </ol>
       </div>
     </section>
@@ -47,8 +55,9 @@ export default function Projects() {
 
 const btn = "inline-flex h-12 items-center gap-2 rounded-full px-5 text-[15px] transition-colors";
 
-function ProjectNode({ p, i }: { p: Project; i: number }) {
+function ProjectNode({ p, i }: { p: Project | AutoProject; i: number }) {
   const n = String(i + 1).padStart(2, "0");
+  const auto = "auto" in p;
   const flip = i % 2 === 1; // media alternates sides on desktop
   return (
     <Node
@@ -57,7 +66,7 @@ function ProjectNode({ p, i }: { p: Project; i: number }) {
       icon={p.kind.toLowerCase().includes("agent") ? "ai" : "box"}
       anchor={`project-${p.slug}`}
       hoverRoot
-      meta={{ idle: "queued", success: p.private ? "success · private" : "success" }}
+      meta={{ idle: "queued", success: p.private ? "success · private" : auto ? "success · synced" : "success" }}
       bodyClassName="grid lg:grid-cols-[3fr_2fr]"
     >
       {/* 16:10 media frame (~60% of the node), the same aspect as the hover capture, so nothing crops. */}
@@ -93,7 +102,7 @@ function ProjectNode({ p, i }: { p: Project; i: number }) {
           <p className="eyebrow mb-3">{p.kind}</p>
           <h3 className="text-[clamp(2rem,1rem+2.4vw,3.5rem)] font-semibold leading-[1.02]">{p.title}</h3>
           <p className="mt-5 text-lg leading-relaxed text-muted">
-            {p.problem} <span className="text-fg/90">→ {p.solution}</span>
+            {p.problem} {p.solution && <span className="text-fg/90">→ {p.solution}</span>}
           </p>
         </div>
         <div className="mt-auto pt-8">
@@ -115,7 +124,7 @@ function ProjectNode({ p, i }: { p: Project; i: number }) {
           <div className="mt-6 flex flex-wrap items-center gap-2">
             {studied.has(p.slug) && (
               <TransitionLink href={`/work/${p.slug}/`} className={cn(btn, "bg-accent font-medium text-bg hover:bg-accent-hover")}>
-                Open case study <span aria-hidden>→</span>
+                {auto ? "Project details" : "Open case study"} <span aria-hidden>→</span>
                 <span className="sr-only">: {p.title}</span>
               </TransitionLink>
             )}

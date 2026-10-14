@@ -11,11 +11,13 @@ import CardMediaView from "@/components/ui/CardMediaView";
 import ExportedImage from "next-image-export-optimizer";
 import { cardMedia } from "@/lib/media";
 import { cn } from "@/lib/utils";
+import { autoProjects } from "@/lib/autoProjects";
+import AutoProjectPage from "./AutoProjectPage";
 
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return caseStudies.map((c) => ({ slug: c.slug }));
+  return [...caseStudies, ...autoProjects].map((c) => ({ slug: c.slug }));
 }
 
 const find = (slug: string) => {
@@ -24,16 +26,25 @@ const find = (slug: string) => {
   return cs && p ? { cs, p } : null;
 };
 
+/** Case studies first, then the GitHub-synced pages; "next workflow" walks this loop. */
+const order = [
+  ...caseStudies.map((c) => ({ slug: c.slug, title: projects.find((x) => x.slug === c.slug)?.title ?? c.slug })),
+  ...autoProjects.map((p) => ({ slug: p.slug, title: p.title })),
+];
+const nextAfter = (slug: string) => order[(order.findIndex((o) => o.slug === slug) + 1) % order.length];
+
 export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
   const f = find(params.slug);
-  if (!f) return {};
-  const title = `${f.p.title} — case study`;
-  const description = `${f.p.problem} ${f.p.solution}`;
+  const a = f ? null : autoProjects.find((x) => x.slug === params.slug);
+  if (!f && !a) return {};
+  const p = f ? f.p : a!;
+  const title = f ? `${p.title} — case study` : `${p.title} — project`;
+  const description = f ? `${p.problem} ${p.solution}` : p.problem;
   return {
     title,
     description,
-    alternates: { canonical: `/work/${f.p.slug}/` },
-    openGraph: { title: `${title} · ${site.name}`, description, url: `/work/${f.p.slug}/`, images: [{ url: "/og.png", width: 1200, height: 630 }] },
+    alternates: { canonical: `/work/${p.slug}/` },
+    openGraph: { title: `${title} · ${site.name}`, description, url: `/work/${p.slug}/`, images: [{ url: "/og.png", width: 1200, height: 630 }] },
     twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
   };
 }
@@ -53,11 +64,13 @@ function Fact({ text, className }: { text: string; className?: string }) {
 
 export default function CaseStudyPage({ params }: { params: { slug: string } }) {
   const f = find(params.slug);
-  if (!f) notFound();
+  if (!f) {
+    const a = autoProjects.find((x) => x.slug === params.slug);
+    if (!a) notFound();
+    return <AutoProjectPage p={a} next={nextAfter(a.slug)} />;
+  }
   const { cs, p } = f;
-  const idx = caseStudies.findIndex((c) => c.slug === cs.slug);
-  const next = caseStudies[(idx + 1) % caseStudies.length];
-  const nextProject = projects.find((x) => x.slug === next.slug)!;
+  const next = nextAfter(cs.slug);
   const media = cardMedia(p);
 
   const steps: { name: string; icon: IconName; body: React.ReactNode }[] = [
@@ -185,7 +198,7 @@ export default function CaseStudyPage({ params }: { params: { slug: string } }) 
         <nav aria-label="Next case study" className="mt-20 border-t border-line pt-10">
           <p className="eyebrow mb-3">next workflow</p>
           <TransitionLink href={`/work/${next.slug}/`} className="group inline-flex items-baseline gap-4 font-display text-[clamp(2rem,5vw,3.5rem)] font-semibold leading-none">
-            {nextProject.title}
+            {next.title}
             <span aria-hidden className="text-accent transition-transform duration-500 ease-expo group-hover:translate-x-2">→</span>
           </TransitionLink>
         </nav>

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { caseStudies, site } from "@/data/content";
+import { autoProjects } from "@/lib/autoProjects";
 
 export const dynamic = "force-static";
 
@@ -7,7 +8,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
   return [
     { url: `${site.url}/`, lastModified: now, changeFrequency: "monthly", priority: 1 },
-    ...caseStudies.map((c) => ({
+    ...[...caseStudies, ...autoProjects].map((c) => ({
       url: `${site.url}/work/${c.slug}/`,
       lastModified: now,
       changeFrequency: "monthly" as const,
