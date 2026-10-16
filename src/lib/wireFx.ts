@@ -8,7 +8,8 @@
 //   first time something near it needs them, and are layers only while they're lit.
 // - Click on empty background: packets ripple out along the nearest edges (≤1 burst / 500ms).
 // - Idle packets: every visible edge of the on-screen fields is a "slot" (long edges: two).
-//   One page-wide pool of packets (≤16 on phones, ≤30 on desktop) serves them. Each packet
+//   One page-wide pool of packets (≤16) serves them. On desktop only the fields in the section
+//   that fills most of the screen get slots. Each packet
 //   makes one trip (Web Animation, transform/opacity) and then takes the next slot: when there
 //   are more slots than the cap, slots rotate through a queue so no edge stays dead; when there
 //   are fewer, each slot keeps its own packet. Random start offsets and speeds keep them out
@@ -60,6 +61,11 @@ let queue: Slot[] = [];
 let planTimer = 0;
 const fieldIds = new WeakMap<Field, number>();
 let nextFieldId = 0;
+// desktop: packets only run in the section that fills most of the viewport
+const sectionOf = new WeakMap<Field, Element>();
+const seen = new Map<Element, number>(); // section -> visible px
+let secIo: IntersectionObserver | null = null;
+let active: Element | null = null;
 
 const at = (c: WireCurve, t: number): Pt => {
   const u = 1 - t, w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
@@ -263,7 +269,7 @@ const schedule = () => {
 // ── idle packets ─────────────────────────────────────────────────────────────
 
 const LONG = 280; // px: edges longer than this carry two packets
-const cap = () => (phone ? 16 : 30);
+const cap = () => 16;
 const edgeLen = (a: Float32Array) => {
   let len = 0;
   for (let k = 1; k < SAMPLES; k++) len += Math.hypot(a[k * 2] - a[k * 2 - 2], a[k * 2 + 1] - a[k * 2 - 1]);
@@ -278,6 +284,7 @@ const schedulePlan = () => {
 function plan() {
   const next = new Map<string, Slot>();
   for (const f of onScreen) {
+    if (!phone && active && sectionOf.get(f) !== active) continue;
     let id = fieldIds.get(f);
     if (id === undefined) fieldIds.set(f, (id = nextFieldId++));
     f.strips.forEach((s, si) => {
@@ -507,6 +514,18 @@ function init() {
       }),
     { rootMargin: "60px 0px" }
   );
+  secIo = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => (e.isIntersecting ? seen.set(e.target, e.intersectionRect.height) : seen.delete(e.target)));
+      let best: Element | null = null, bh = 0;
+      for (const [el, h] of seen) if (h > bh) ((best = el), (bh = h));
+      if (best && best !== active) {
+        active = best;
+        schedulePlan();
+      }
+    },
+    { threshold: Array.from({ length: 21 }, (_, i) => i / 20) }
+  );
   const bump = () => {
     version++;
     phone = phoneMq.matches;
@@ -537,6 +556,10 @@ function init() {
   document.addEventListener("click", onClick);
   teardown = () => {
     io?.disconnect();
+    secIo?.disconnect();
+    secIo = null;
+    seen.clear();
+    active = null;
     ro?.disconnect();
     window.removeEventListener("resize", bump);
     window.removeEventListener("pointermove", move);
@@ -564,9 +587,17 @@ export function registerField(el: HTMLElement, color: string, strips: FxStrip[])
   strips.forEach((s) => colors.set(s, color));
   fields.add(f);
   io!.observe(el);
+  const sec = el.closest("section") ?? el;
+  sectionOf.set(f, sec);
+  secIo!.observe(sec);
   return () => {
     io?.unobserve(el);
     fields.delete(f);
+    if (![...fields].some((x) => sectionOf.get(x) === sec)) {
+      secIo?.unobserve(sec);
+      seen.delete(sec);
+      if (active === sec) active = null;
+    }
     onScreen.delete(f);
     schedulePlan();
     strips.forEach((s) => {
