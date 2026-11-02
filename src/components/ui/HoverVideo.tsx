@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { attachSources, type VideoSource } from "@/lib/videoSources";
 
 type Props = { mp4: string; webm: string; mobile?: string; poster: string; className?: string };
 type Mode = "hover" | "inview" | null;
@@ -18,6 +19,9 @@ let current: { stop: () => void } | null = null;
  *   (the whole card can be taller than the screen), pauses when it
  *   leaves. Sources are attached (preload="none" until then) only when the card is about one
  *   screen away, and a 640px H.264 file is served via <source media="(max-width: 767px)">.
+ * - Playback is requested straight away and starts once enough has buffered; the still stays on
+ *   show until then. H.264 is tried first, and a file that can't be decoded falls through to the
+ *   next format (see attachSources).
  * - Reduced motion or Data Saver: renders nothing, so the poster/still is all that shows.
  * - Starting one preview pauses any other.
  */
@@ -46,46 +50,38 @@ export default function HoverVideo({ mp4, webm, mobile, poster, className }: Pro
     if (!mode || !video || !root) return;
 
     let active = false;
-    let armed = false;
-    let ready = false;
-    let waitTimer = 0;
+    let detach: (() => void) | undefined;
     let resetTimer = 0;
 
     const arm = () => {
-      if (armed) return;
-      armed = true;
+      if (detach) return;
       video.poster = poster;
       video.preload = "auto";
-      const sources: [string, string, string?][] = [
-        ...(mobile ? [[mobile, "video/mp4", "(max-width: 767px)"] as [string, string, string]] : []),
-        [webm, "video/webm"],
-        [mp4, "video/mp4"],
+      const sources: VideoSource[] = [
+        ...(mobile ? [{ src: mobile, type: "video/mp4", media: "(max-width: 767px)" }] : []),
+        { src: mp4, type: "video/mp4" },
+        { src: webm, type: "video/webm" },
       ];
-      for (const [src, type, media] of sources) {
-        const s = document.createElement("source");
-        s.src = src;
-        s.type = type;
-        if (media) s.media = media;
-        video.appendChild(s);
-      }
-      video.load();
+      detach = attachSources(
+        video,
+        sources,
+        () => {
+          setVisible(false);
+          play(false);
+        },
+        () => setVisible(false)
+      );
     };
 
     const play = (fromStart: boolean) => {
-      window.clearTimeout(waitTimer);
       if (!active) return;
-      if (fromStart) {
-        try {
-          video.currentTime = 0;
-        } catch {}
-      }
+      if (fromStart && video.currentTime > 0) video.currentTime = 0;
       video.play().catch(() => {});
     };
 
     const me = {
       stop: () => {
         active = false;
-        window.clearTimeout(waitTimer);
         setVisible(false);
         video.pause();
         if (mode !== "hover") return; // phones resume where they left off
@@ -108,24 +104,17 @@ export default function HoverVideo({ mp4, webm, mobile, poster, className }: Pro
       active = true;
       window.clearTimeout(resetTimer);
       arm();
-      if (ready) play(mode === "hover");
-      else waitTimer = window.setTimeout(() => play(mode === "hover"), 1000); // fallback if canplaythrough is slow
+      play(mode === "hover");
     };
     const stop = () => {
       if (current === me) current = null;
       me.stop();
     };
 
-    const onReady = () => {
-      if (ready) return;
-      ready = true;
-      play(mode === "hover");
-    };
     const onPlaying = () => active && setVisible(true);
     const onFocusOut = (e: FocusEvent) => {
       if (!root.contains(e.relatedTarget as Node)) stop();
     };
-    video.addEventListener("canplaythrough", onReady);
     video.addEventListener("playing", onPlaying);
 
     const cleanups: (() => void)[] = [];
@@ -156,9 +145,8 @@ export default function HoverVideo({ mp4, webm, mobile, poster, className }: Pro
 
     return () => {
       cleanups.forEach((c) => c());
-      video.removeEventListener("canplaythrough", onReady);
       video.removeEventListener("playing", onPlaying);
-      window.clearTimeout(waitTimer);
+      detach?.();
       window.clearTimeout(resetTimer);
       if (current === me) current = null;
       video.pause();

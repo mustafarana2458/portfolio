@@ -72,7 +72,7 @@ from; a topic change takes effect on the next run without a re-capture. Big hero
 small brand colour, so use the topic when the pick is off.
 
 **Safety.** If the GitHub API fails nothing is written. The workflow runs lint + build before
-committing and pushes only when something changed, as `github-actions[bot]`; Netlify rebuilds on the
+committing and pushes only when something changed, as `github-actions[bot]`; Vercel rebuilds on the
 push. It uses the built-in `GITHUB_TOKEN` only (needs *Settings → Actions → General → Workflow
 permissions → Read and write*); no other secrets.
 
@@ -95,13 +95,16 @@ node scripts/capture-eventsaas.mjs && npm run prepare-videos   # (in this repo)
 
 Demo login: `admin@demo-banquet.test` / `DemoPass2026!` (local only).
 
-## Deploying (Netlify)
+## Deploying (Vercel)
 
-Deploy `./out`. The contact form uses **Netlify Forms**:
-`public/__forms.html` is a hidden static copy of the form that Netlify detects at deploy time, and the
-React form POSTs to `/__forms.html`. Field names in both files must match. Submissions appear under
-*Site → Forms* in Netlify; turn on email notifications there. On any other host (or locally) the POST
-fails and the form offers a prefilled `mailto:` link instead, so no message is lost.
+Vercel builds on every push to `main` and serves `./out`. Cache headers live in `vercel.json`: files in
+`/_next/static` have hashed names and are cached for good. `/videos` and `/images` keep their names when
+re-captured, so they are cached for 30 days and refreshed in the background.
+
+The contact form posts to **[Web3Forms](https://web3forms.com)**, which emails submissions to the
+address the key was created with. Set `NEXT_PUBLIC_WEB3FORMS_KEY` in *Project → Settings → Environment
+Variables* and redeploy (it is read at build time). Without a key, or if the request fails, the form
+offers a prefilled `mailto:` link instead, so no message is lost.
 
 ## Editing content
 

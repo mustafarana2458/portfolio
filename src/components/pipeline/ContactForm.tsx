@@ -8,13 +8,14 @@ type Service = { id: string; title: string };
 type Status = "idle" | "sending" | "sent" | "failed";
 type Errors = Partial<Record<"name" | "email" | "message", string>>;
 
-const FORM_NAME = "contact";
+const WEB3FORMS_URL = "https://api.web3forms.com/submit";
+// Read at build time. Web3Forms has this key sent from the browser, so it ends up in the page.
+const WEB3FORMS_KEY = process.env.NEXT_PUBLIC_WEB3FORMS_KEY;
 
 /**
- * The Output node's input panel. Submits to Netlify Forms (detected via /__forms.html,
- * which is why we POST there, the path that works for static and Next-runtime deploys).
+ * The Output node's input panel. Submits to Web3Forms from the browser.
  * While sending, a packet runs across the node header; on success the node flips to
- * "delivered". If the POST fails (local dev, other host, offline) it offers a prefilled
+ * "delivered". If that fails (no key set, service down, offline) it offers a prefilled
  * mailto: fallback so no message is lost.
  */
 export default function ContactForm({ services, email }: { services: Service[]; email: string }) {
@@ -64,7 +65,7 @@ export default function ContactForm({ services, email }: { services: Service[]; 
       form.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
       return;
     }
-    if (fd.get("bot-field")) return; // honeypot
+    if (fd.get("botcheck")) return; // honeypot
 
     const serviceTitle = services.find((s) => s.id === fd.get("service"))?.title ?? "General enquiry";
     const subject = `${serviceTitle}: portfolio enquiry from ${fd.get("name")}`;
@@ -75,17 +76,21 @@ export default function ContactForm({ services, email }: { services: Service[]; 
     setNode("running");
     const started = performance.now();
     try {
-      const params = new URLSearchParams();
-      params.set("form-name", FORM_NAME);
-      fd.forEach((v, k) => params.set(k, String(v)));
-      params.set("service", serviceTitle);
-      const res = await fetch("/__forms.html", {
+      if (!WEB3FORMS_KEY) throw new Error("NEXT_PUBLIC_WEB3FORMS_KEY is not set");
+      const payload = new FormData();
+      payload.set("access_key", WEB3FORMS_KEY);
+      payload.set("subject", subject);
+      payload.set("name", String(fd.get("name")));
+      payload.set("email", String(fd.get("email"))); // Web3Forms uses this as the reply-to
+      payload.set("service", serviceTitle);
+      payload.set("message", String(fd.get("message")));
+      const res = await fetch(WEB3FORMS_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
+        headers: { Accept: "application/json" },
+        body: payload,
       });
-      // A redirect means this host is not handling the form (Netlify answers 200 directly).
-      if (!res.ok || res.redirected) throw new Error(String(res.status));
+      const result = (await res.json()) as { success?: boolean };
+      if (!res.ok || !result.success) throw new Error(String(res.status));
       // Let the packet finish its run so the state change reads as a result, not a flicker.
       await new Promise((r) => setTimeout(r, Math.max(0, 900 - (performance.now() - started))));
       setStatus("sent");
@@ -104,18 +109,13 @@ export default function ContactForm({ services, email }: { services: Service[]; 
   return (
     <form
       ref={formRef}
-      name={FORM_NAME}
-      method="POST"
-      data-netlify="true"
-      netlify-honeypot="bot-field"
       noValidate
       onSubmit={onSubmit}
       className="relative"
     >
-      <input type="hidden" name="form-name" value={FORM_NAME} />
       <p className="hidden" aria-hidden>
         <label>
-          Don&apos;t fill this out: <input name="bot-field" tabIndex={-1} autoComplete="off" />
+          Don&apos;t fill this out: <input name="botcheck" tabIndex={-1} autoComplete="off" />
         </label>
       </p>
 
