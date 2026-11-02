@@ -111,6 +111,10 @@ offers a prefilled `mailto:` link instead, so no message is lost.
 All text, links, projects, skills and services live in **`src/data/content.ts`**.
 
 - A link left as `undefined` hides its button.
+- When a case study changes, bump its `updated` date (the sitemap's `lastmod`). Its `seoDescription` and
+  `site.description` should stay 150-160 characters. GitHub-synced pages generate both on their own.
+- After changing `site.url`, update `URL_TEXT` in `scripts/og-image.mjs` and run `npm run og-image`
+  after a build: the address is drawn into `public/og.png`.
 - `about.stats`: fill in real numbers and they appear in the About node's output panel; `null` hides them.
 - An experience item with `period: undefined` shows `—`; `status` is `"running"` or `"completed"`.
 - A project without `image` gets a designed placeholder cover. `video` is the optional hover preview;

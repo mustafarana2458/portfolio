@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { caseStudies, projects, site } from "@/data/content";
+import { caseStudyLd, pageMetadata } from "@/lib/seo";
+import { fitDescription } from "@/lib/fitDescription";
+import JsonLd from "@/components/ui/JsonLd";
 import Node from "@/components/pipeline/Node";
 import type { IconName } from "@/components/pipeline/NodeIcon";
 import ArchitectureDiagram from "@/components/pipeline/ArchitectureDiagram";
@@ -11,7 +14,7 @@ import CardMediaView from "@/components/ui/CardMediaView";
 import ExportedImage from "next-image-export-optimizer";
 import { cardMedia } from "@/lib/media";
 import { cn } from "@/lib/utils";
-import { autoProjects } from "@/lib/autoProjects";
+import { autoProjects, type AutoProject } from "@/lib/autoProjects";
 import AutoProjectPage from "./AutoProjectPage";
 
 export const dynamicParams = false;
@@ -38,16 +41,20 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   const a = f ? null : autoProjects.find((x) => x.slug === params.slug);
   if (!f && !a) return {};
   const p = f ? f.p : a!;
-  const title = f ? `${p.title} — case study` : `${p.title} — project`;
-  const description = f ? `${p.problem} ${p.solution}` : p.problem;
-  return {
+  const title = f ? `${p.title}: ${p.kind} Case Study` : `${p.title}: ${p.kind}`;
+  return pageMetadata({
     title,
-    description,
-    alternates: { canonical: `/work/${p.slug}/` },
-    openGraph: { title: `${title} · ${site.name}`, description, url: `/work/${p.slug}/`, images: [{ url: "/og.png", width: 1200, height: 630 }] },
-    twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
-  };
+    shareTitle: `${title} | ${site.name}`,
+    description: f ? f.cs.seoDescription : autoDescription(a!),
+    path: `/work/${p.slug}/`,
+    type: "article",
+  });
 }
+
+const autoDescription = (a: AutoProject) => {
+  const lead = a.problem.toLowerCase().startsWith(a.title.toLowerCase()) ? a.problem : `${a.title}: ${a.problem}`;
+  return fitDescription([lead, a.intro !== a.problem && a.intro, a.features.join(". ")].filter(Boolean).join(" "), site.name);
+};
 
 const isTodo = (s: string) => s.trim().toUpperCase().startsWith("TODO");
 
@@ -67,7 +74,12 @@ export default function CaseStudyPage({ params }: { params: { slug: string } }) 
   if (!f) {
     const a = autoProjects.find((x) => x.slug === params.slug);
     if (!a) notFound();
-    return <AutoProjectPage p={a} next={nextAfter(a.slug)} />;
+    return (
+      <>
+        <JsonLd data={caseStudyLd({ project: a, name: a.title, description: autoDescription(a), image: cardMedia(a).still, updated: a.updated })} />
+        <AutoProjectPage p={a} next={nextAfter(a.slug)} />
+      </>
+    );
   }
   const { cs, p } = f;
   const next = nextAfter(cs.slug);
@@ -112,6 +124,7 @@ export default function CaseStudyPage({ params }: { params: { slug: string } }) 
 
   return (
     <article className="pb-24 pt-[calc(var(--nav-h)+2.5rem)]">
+      <JsonLd data={caseStudyLd({ project: p, name: `${p.title} case study`, description: cs.seoDescription, image: media.still, updated: cs.updated })} />
       <div className="container">
         <TransitionLink href="/#work" className="inline-flex items-center gap-2 font-mono text-[12px] text-muted transition-colors hover:text-fg">
           <span aria-hidden>←</span> all workflows

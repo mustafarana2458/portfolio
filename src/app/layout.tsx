@@ -16,14 +16,12 @@ const serif = Instrument_Serif({ subsets: ["latin"], weight: "400", style: "ital
 // Mono is for small labels/logs: not preloaded, so it never competes with the hero for bandwidth.
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap", preload: false });
 
-const fullTitle = `${site.name} — ${site.title}`;
-
 // deviceMemory is Chromium-only; where it's missing, cores + Data Saver decide.
 const LITE_CHECK = `(function(){try{var n=navigator,c=n.connection||{},m=n.deviceMemory;if(matchMedia("(max-width: 767px)").matches&&(c.saveData||(n.hardwareConcurrency||0)<6||(m!==undefined&&m<4)))document.documentElement.classList.add("lite")}catch(e){}})()`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
-  title: { default: fullTitle, template: `%s — ${site.name}` },
+  title: { default: site.seoTitle, template: `%s | ${site.name}` },
   description: site.description,
   applicationName: site.name,
   authors: [{ name: site.name, url: contact.github }],
@@ -39,17 +37,6 @@ export const metadata: Metadata = {
     "Pakistan",
     site.name,
   ],
-  alternates: { canonical: "/" },
-  openGraph: {
-    type: "website",
-    url: "/",
-    siteName: site.name,
-    title: fullTitle,
-    description: site.description,
-    locale: "en_US",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: fullTitle }],
-  },
-  twitter: { card: "summary_large_image", title: fullTitle, description: site.description, images: ["/og.png"] },
   robots: { index: true, follow: true },
 };
 
@@ -58,19 +45,6 @@ export const viewport: Viewport = {
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
-};
-
-const personLd = {
-  "@context": "https://schema.org",
-  "@type": "Person",
-  name: site.name,
-  jobTitle: site.title,
-  url: site.url,
-  email: `mailto:${contact.email}`,
-  address: { "@type": "PostalAddress", addressLocality: "Lahore", addressCountry: "PK" },
-  worksFor: { "@type": "Organization", name: "Aevia", url: "https://aevia.site" },
-  alumniOf: { "@type": "CollegeOrUniversity", name: "Lahore Garrison University" },
-  sameAs: [contact.github, contact.linkedin],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -84,7 +58,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <noscript>
           <style>{`.split-word{transform:none!important}.node .node-dot{background:rgb(var(--ok))!important}.node .node-meta>span{display:none!important}.node .node-meta>.meta-success{display:inline!important}`}</style>
         </noscript>
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(personLd) }} />
       </head>
       <body id="top">
         <a

@@ -14,12 +14,17 @@
 // ─────────────────────────────────────────────────────────────
 
 export const site = {
-  url: "https://mustafarana.netlify.app",
+  url: "https://mustafa.celaris.cloud",
   name: "Ghulam Mustafa Rana",
   initials: "GMR",
   title: "Full-Stack & AI Automation Engineer",
+  /** Home page <title>. */
+  seoTitle: "Ghulam Mustafa Rana | Full-Stack & AI Automation Engineer in Lahore",
+  /** Meta description: keep to 150-160 characters. */
   description:
-    "Ghulam Mustafa Rana — Full-Stack & AI Automation Engineer from Lahore. Co-Founder & CTO at Aevia, building Celaris SaaS. Web apps, SaaS, AI agents and n8n automation.",
+    "Ghulam Mustafa Rana, Full-Stack & AI Automation Engineer in Lahore. Co-Founder & CTO at Aevia, building Celaris. Web apps, SaaS, AI agents and n8n automation.",
+  /** Sitemap date for the home page: bump when its content changes (projects count on their own). */
+  updated: "2026-11-02",
   location: "Lahore, Pakistan",
   available: true,
 };
@@ -377,6 +382,10 @@ export type ArchNode = {
 
 export type CaseStudy = {
   slug: string;
+  /** Sitemap date: bump when this case study's content changes. */
+  updated: string;
+  /** Meta description: keep to 150-160 characters. */
+  seoDescription: string;
   problem: string;
   role: string;
   architecture: { nodes: ArchNode[]; edges: [string, string][] };
@@ -392,6 +401,9 @@ export type CaseStudy = {
 export const caseStudies: CaseStudy[] = [
   {
     slug: "celaris",
+    updated: "2026-10-01",
+    seoDescription:
+      "Celaris is an AI-native multi-tenant SaaS joining CRM, deals, projects and invoicing, built on Next.js and Supabase with tenant isolation in the database.",
     problem:
       "Growing teams run clients, deals, projects and invoicing across separate tools, so data is duplicated and nothing is connected.",
     role: "Co-Founder & CTO at Aevia. Co-built Celaris with Rana Muhammad Bilal.",
@@ -458,6 +470,9 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     slug: "ai-reel-pipeline",
+    updated: "2026-10-01",
+    seoDescription:
+      "AI Reel Pipeline uses LangGraph agents to script, plan and render vertical reels with Remotion, turning a single topic into a finished video with captions.",
     problem: "Producing short-form vertical video by hand is slow and repetitive.",
     role: "Designed and built at Aevia.",
     architecture: {
@@ -493,6 +508,9 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     slug: "crease",
+    updated: "2026-10-01",
+    seoDescription:
+      "CREASE Packaging is a cinematic landing page for a fictional premium packaging brand, built solo as a scroll-synced story from flat blank to craft and proof.",
     problem: "Premium packaging is tactile, and a flat page can't sell how it feels to open.",
     role: "Designed and built solo as a take-home task for a job interview. CREASE is a fictional packaging brand.",
     architecture: {
@@ -518,6 +536,9 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     slug: "event-saas",
+    updated: "2026-10-01",
+    seoDescription:
+      "EventSaaS is a multi-tenant platform replacing paper and spreadsheets for marriage halls, banquets and event companies, with bookings, calendars and payments.",
     problem: "Marriage halls, banquets and event companies run bookings on paper and spreadsheets.",
     role: "TODO: your role",
     architecture: {

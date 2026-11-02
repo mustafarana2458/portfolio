@@ -14,7 +14,7 @@ import { buildNetwork, edgeControls, cubicAt } from "../src/components/pipeline/
 
 const W = 1200;
 const H = 630;
-const URL_TEXT = "mustafarana.netlify.app";
+const URL_TEXT = "mustafa.celaris.cloud";
 // Palette (keep in sync with src/app/globals.css)
 const C = { bg: "#0C0C0E", surface: "#16161A", fg: "#F2EDE6", muted: "#8F8A83", accent: "#FF6B35" };
 

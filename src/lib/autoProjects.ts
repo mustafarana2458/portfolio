@@ -19,6 +19,8 @@ export type AutoProject = Project & {
   topics: string[];
   poster?: string;
   intro: string;
+  /** Sitemap date: when the page's capture was last taken. */
+  updated: string;
   features: string[];
   gallery: { src: string; alt: string; caption: string }[];
 };
@@ -34,6 +36,7 @@ const url = (v: unknown): string | undefined => {
     return undefined;
   }
 };
+const day = (v: unknown): string | undefined => (str(v) && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString().slice(0, 10) : undefined);
 const norm = (u?: string) => {
   if (!u) return undefined;
   const x = new URL(u);
@@ -84,11 +87,12 @@ function toProject(e: Record<string, unknown>): AutoProject | null {
     language,
     topics,
     intro,
+    updated: day(e.capturedAt) ?? day(e.pushedAt) ?? site.updated,
     features: strs(summary.features).slice(0, 6),
     gallery: (Array.isArray(m.gallery) ? m.gallery : [])
       .map((g: Record<string, unknown>) => ({ src: local(g?.src, "/images/projects/auto/"), caption: str(g?.caption) ? g.caption : "Screen" }))
       .filter((g): g is { src: string; caption: string } => !!g.src)
-      .map((g) => ({ ...g, alt: `${e.title}: ${g.caption.toLowerCase()}` })),
+      .map((g) => ({ ...g, alt: `Screenshot of the ${e.title} website: ${g.caption.toLowerCase()}` })),
   };
 }
 
