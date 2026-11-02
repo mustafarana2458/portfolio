@@ -1,4 +1,5 @@
 {
+  "rewrites": [{ "source": "/googlec64804abd5524e36.html", "destination": "/googlec64804abd5524e36/" }],
   "headers": [
     {
       "source": "/_next/static/(.*)",
