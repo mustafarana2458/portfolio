@@ -38,6 +38,7 @@ export const metadata: Metadata = {
     site.name,
   ],
   robots: { index: true, follow: true },
+  openGraph: { siteName: site.siteName },
 };
 
 export const viewport: Viewport = {

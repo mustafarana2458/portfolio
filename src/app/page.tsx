@@ -1,5 +1,5 @@
 import { site } from "@/data/content";
-import { pageMetadata, personLd } from "@/lib/seo";
+import { pageMetadata, personLd, websiteLd } from "@/lib/seo";
 import JsonLd from "@/components/ui/JsonLd";
 import GlobalPipeline from "@/components/pipeline/GlobalPipeline";
 import Hero from "@/components/sections/Hero";
@@ -17,6 +17,7 @@ export default function Home() {
   return (
     <>
       <JsonLd data={personLd} />
+      <JsonLd data={websiteLd} />
       <GlobalPipeline />
       <Hero />
       <About />

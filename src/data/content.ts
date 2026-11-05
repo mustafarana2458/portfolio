@@ -16,6 +16,8 @@
 export const site = {
   url: "https://mustafa.celaris.cloud",
   name: "Ghulam Mustafa Rana",
+  /** Short name Google shows for the site in search results. */
+  siteName: "Mustafa Rana",
   initials: "GMR",
   title: "Full-Stack & AI Automation Engineer",
   /** Home page <title>. */

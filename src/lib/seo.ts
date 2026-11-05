@@ -13,7 +13,7 @@ export function pageMetadata({ title, shareTitle = title, description, path, typ
     openGraph: {
       type,
       url: path,
-      siteName: site.name,
+      siteName: site.siteName,
       title: shareTitle,
       description,
       locale: "en_US",
@@ -22,6 +22,15 @@ export function pageMetadata({ title, shareTitle = title, description, path, typ
     twitter: { card: "summary_large_image", title: shareTitle, description, images: [OG_IMAGE] },
   };
 }
+
+/** Tells Google which name to show for the site in search results. Home page only. */
+export const websiteLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: site.siteName,
+  alternateName: [site.name, site.initials],
+  url: `${site.url}/`,
+};
 
 export const personLd = {
   "@context": "https://schema.org",
