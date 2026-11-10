@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { buildWireField, type WireCurve, type WireStrip } from "@/lib/wires";
-import { boostField, registerField, type FxStrip } from "@/lib/wireFx";
+import { boostField, pulseField, registerField, type FxStrip } from "@/lib/wireFx";
 import { isLite } from "@/lib/utils";
 
 type Kind = "project" | "section" | "card";
@@ -21,6 +21,110 @@ const PLUG_RUNS: { side: "in" | "out"; c: WireCurve }[] = [
 /** Client cards fade their strip out under the text (see CardWires): no packets there. */
 const CARD_MIN_X = 0.45;
 
+/**
+ * Touch devices: "power on" the first time a field scrolls into view. Its wires draw in
+ * (stroke-dashoffset, ~600ms) and a packet burst runs from the port plugs into the card.
+ * Only fields still below the fold at mount take part. Their wires are hidden ("armed") once
+ * the field is within a screen of the viewport, so only a few fields hold dashed paths at a
+ * time. Returns a cleanup.
+ */
+function powerOn(field: HTMLElement, root: HTMLElement, color: string): () => void {
+  if (field.getBoundingClientRect().top < window.innerHeight) return () => {};
+  // Visible strip + plug paths. With vector-effect non-scaling-stroke, WebKit and Chromium both
+  // measure dashes in screen px, so each path's dash is its on-screen length.
+  let paths: SVGPathElement[] = [];
+  let lens: number[] = [];
+  const anims: Animation[] = [];
+  const reset = () => paths.forEach((p) => ((p.style.strokeDasharray = ""), (p.style.strokeDashoffset = "")));
+
+  const arm = () => {
+    paths = Array.from(field.querySelectorAll<SVGPathElement>(":scope > [data-strip] > svg > path, :scope > [data-plug] > path")).filter(
+      (p) => p.getClientRects().length > 0
+    );
+    lens = paths.map((p) => {
+      const svg = p.ownerSVGElement!;
+      const vb = svg.viewBox.baseVal;
+      const sx = svg.clientWidth / (vb.width || 1), sy = svg.clientHeight / (vb.height || 1);
+      const total = p.getTotalLength();
+      let len = 0, prev: DOMPoint | null = null;
+      for (let k = 0; k <= 16; k++) {
+        const q = p.getPointAtLength((total * k) / 16);
+        if (prev) len += Math.hypot((q.x - prev.x) * sx, (q.y - prev.y) * sy);
+        prev = q;
+      }
+      return Math.ceil(len) + 2;
+    });
+    paths.forEach((p, i) => {
+      p.style.strokeDasharray = `${lens[i]} ${lens[i]}`;
+      p.style.strokeDashoffset = `${lens[i]}`;
+    });
+  };
+
+  const run = () => {
+    paths.forEach((p, i) => {
+      const a = p.animate([{ strokeDashoffset: lens[i] }, { strokeDashoffset: 0 }], {
+        duration: 600,
+        delay: Math.min(i * 18, 220),
+        easing: "cubic-bezier(0.3,0.6,0.3,1)",
+        fill: "forwards",
+      });
+      anims.push(a);
+    });
+    Promise.all(anims.map((a) => a.finished))
+      .then(() => {
+        reset();
+        anims.forEach((a) => a.cancel());
+      })
+      .catch(() => {});
+    // Packet burst: from the plugs' outer ends into the card's ports.
+    const fr = field.getBoundingClientRect();
+    field.querySelectorAll<SVGSVGElement>(":scope > [data-plug]").forEach((plug) => {
+      const r = plug.getBoundingClientRect();
+      if (!r.width) return;
+      PLUG_RUNS.filter((run) => run.side === plug.dataset.plug).forEach((run, k) => {
+        const dot = document.createElement("span");
+        dot.className = "absolute left-[-3px] top-[-3px] h-[6px] w-[6px] rounded-full";
+        dot.style.cssText += `background:${color};box-shadow:0 0 10px 3px ${color}80;opacity:0`;
+        root.appendChild(dot);
+        const a = dot.animate(runFrames(run.c, r.left - fr.left, r.top - fr.top, r.width, r.height), {
+          duration: 700,
+          delay: 300 + k * 140,
+          easing: "cubic-bezier(0.45,0,0.55,1)",
+        });
+        anims.push(a);
+        a.finished.then(() => dot.remove()).catch(() => dot.remove());
+      });
+    });
+  };
+
+  let armed = false;
+  const near = new IntersectionObserver(
+    ([e]) => {
+      if (!e.isIntersecting || armed) return;
+      armed = true;
+      near.disconnect();
+      arm();
+      io.observe(field);
+    },
+    { rootMargin: "0px 0px 100% 0px" }
+  );
+  const io = new IntersectionObserver(
+    ([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      run();
+    },
+    { rootMargin: "0px 0px -12% 0px" }
+  );
+  near.observe(field);
+  return () => {
+    near.disconnect();
+    io.disconnect();
+    anims.forEach((a) => a.cancel());
+    reset();
+  };
+}
+
 /** Keyframes for a packet along normalised curve `c`, mapped into the box (x, y, w, h). */
 function runFrames(c: WireCurve, x: number, y: number, w: number, h: number): Keyframe[] {
   const frames: Keyframe[] = [];
@@ -36,8 +140,10 @@ function runFrames(c: WireCurve, x: number, y: number, w: number, h: number): Ke
  * The live part of a wire field (the static SVG stays as rendered):
  * - Registers the field's strips with lib/wireFx, which runs the idle packets (a capped,
  *   rotating page-wide pool: every visible edge gets packets), the cursor bend and click bursts.
- * - Project / client cards "execute" while hovered (desktop) or while the card is ≥60% on
- *   screen (touch): the field lights up in the card's colour (a cloned copy of the strips with
+ * - Touch: wires draw in once on first scroll into view, with a packet burst from the ports
+ *   (powerOn). Packets pause while the tab is hidden.
+ * - Project / client cards "execute" while hovered (desktop) or briefly after a tap (touch,
+ *   which also pulses the wires nearest the tap): the field lights up in the card's colour (a cloned copy of the strips with
  *   edges at 40%, faded in with opacity), its packets run 2x, and 3 extra packets run into the
  *   card's ports (client cards: along the card's strip).
  * Reduced motion: the static SVG wires still show, nothing animates. html.lite: no field.
@@ -56,7 +162,13 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
       const sEl = field.querySelector<HTMLElement>(`:scope > [data-strip="${name}"]`);
       return sEl ? [{ el: sEl, edges: s.edges, nodes: s.nodes, minX: kind === "card" ? CARD_MIN_X : undefined }] : [];
     });
-    const unregister = registerField(field, color, fxStrips);
+    const touch = !window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const unpower = touch ? powerOn(field, el, color) : () => {};
+    const unregisterField = registerField(field, color, fxStrips);
+    const unregister = () => {
+      unpower();
+      unregisterField();
+    };
     if (!extra) return unregister;
 
     const phone = window.matchMedia("(max-width: 767px)").matches;
@@ -65,7 +177,8 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
     let inView = false;
     let lit = false;
 
-    const syncPlay = () => extras.forEach((a) => (lit && inView ? a.play() : a.cancel()));
+    const syncPlay = () => extras.forEach((a) => (lit && inView && !document.hidden ? a.play() : a.cancel()));
+    document.addEventListener("visibilitychange", syncPlay);
 
     const build = () => {
       extras.forEach((a) => a.cancel());
@@ -145,7 +258,7 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
       syncPlay();
     };
 
-    // Hover (desktop) or ≥60% on screen (touch).
+    // Hover (desktop) or tap (touch).
     const hoverRoot =
       kind === "project"
         ? field.parentElement?.querySelector<HTMLElement>(":scope > [data-hover-root]")
@@ -167,21 +280,25 @@ export default function WireFX({ seed, labels, across, color, kind }: { seed: st
           hoverRoot.removeEventListener("focusout", focusOut);
         });
       } else {
-        // A card can be taller than the screen: 60% of whichever is smaller.
-        const seen = new IntersectionObserver(
-          ([e]) => {
-            const h = Math.min(e.boundingClientRect.height, e.rootBounds?.height ?? window.innerHeight);
-            setLit(h > 0 && e.intersectionRect.height >= h * 0.6);
-          },
-          { threshold: Array.from({ length: 21 }, (_, i) => i / 20) }
-        );
-        seen.observe(hoverRoot);
-        off.push(() => seen.disconnect());
+        // Touch: a tap lights the card for a moment and pulses the wires nearest the tap.
+        let t = 0;
+        const tap = (e: MouseEvent) => {
+          pulseField(field, e.clientX, e.clientY);
+          setLit(true);
+          window.clearTimeout(t);
+          t = window.setTimeout(() => setLit(false), 1400);
+        };
+        hoverRoot.addEventListener("click", tap);
+        off.push(() => {
+          hoverRoot.removeEventListener("click", tap);
+          window.clearTimeout(t);
+        });
       }
     }
 
     return () => {
       off.forEach((o) => o());
+      document.removeEventListener("visibilitychange", syncPlay);
       ro.disconnect();
       io.disconnect();
       extras.forEach((a) => a.cancel());

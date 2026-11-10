@@ -12,7 +12,8 @@
 //   that fills most of the screen get slots. Runs on its own: touch devices need no hover. Each packet
 //   makes one trip (Web Animation, transform/opacity) and then takes the next slot: when there
 //   are more slots than the cap, slots rotate through a queue so no edge stays dead; when there
-//   are fewer, each slot keeps its own packet. Random start offsets and speeds keep them out
+//   are fewer, each slot keeps its own packet. Phones: ≤10 packets, each with a short fading
+//   trail (one dimmer dot behind it) and a stronger glow. Random start offsets and speeds keep them out
 //   of sync. A field being hovered / "executing" runs its packets at 2x.
 // - Only fields that are on screen are looked at. The static SVG base is never touched.
 import type { WireCurve, WireNode } from "@/lib/wires";
@@ -22,7 +23,8 @@ type Pt = { x: number; y: number };
 export type FxStrip = { el: HTMLElement; edges: { c: WireCurve; mobile: boolean }[]; nodes: WireNode[]; minX?: number };
 type Field = { el: HTMLElement; color: string; strips: FxStrip[]; boost: boolean };
 type Slot = { key: string; f: Field; s: FxStrip; i: number; n: number };
-type Packet = { el: HTMLSpanElement; slot: Slot | null; anim: Animation | null; v: number };
+/** `trail`: phones only, a fading dot following the packet (same path, a few ms behind). */
+type Packet = { el: HTMLSpanElement; slot: Slot | null; anim: Animation | null; v: number; trail: HTMLSpanElement[]; trailAnims: Animation[] };
 
 /** x, y: document px; ox, oy: offset inside the field box. */
 type Geom = { v: number; x: number; y: number; ox: number; oy: number; w: number; h: number; samples: Float32Array[]; nodes: Float32Array };
@@ -269,7 +271,7 @@ const schedule = () => {
 // ── idle packets ─────────────────────────────────────────────────────────────
 
 const LONG = 280; // px: edges longer than this carry two packets
-const cap = () => (phone ? 6 : 16); // phones: a light ambient run
+const cap = () => (phone ? 10 : 16); // phones: a lighter ambient run
 const edgeLen = (a: Float32Array) => {
   let len = 0;
   for (let k = 1; k < SAMPLES; k++) len += Math.hypot(a[k * 2] - a[k * 2 - 2], a[k * 2 + 1] - a[k * 2 - 1]);
@@ -343,7 +345,7 @@ function newPacket(): Packet {
   const el = document.createElement("span");
   el.setAttribute("aria-hidden", "true");
   el.style.cssText = "position:absolute;left:-3px;top:-3px;width:6px;height:6px;border-radius:9999px;opacity:0;pointer-events:none";
-  const p: Packet = { el, slot: null, anim: null, v: version };
+  const p: Packet = { el, slot: null, anim: null, v: version, trail: [], trailAnims: [] };
   packets.push(p);
   return p;
 }
@@ -356,7 +358,12 @@ function release(p: Packet) {
   p.anim = null;
   p.slot = null;
   p.el.remove();
+  p.trailAnims.forEach((a) => a.cancel());
+  p.trailAnims = [];
+  p.trail.forEach((t) => t.remove());
 }
+
+const TRAIL = [{ lag: 90, size: 5, alpha: 0.4 }];
 
 /** One trip along the slot's edge, then on to the next slot. */
 function run(p: Packet, slot: Slot, first: boolean) {
@@ -376,13 +383,41 @@ function run(p: Packet, slot: Slot, first: boolean) {
   if (p.el.parentElement !== slot.f.el) slot.f.el.appendChild(p.el);
   const color = slot.f.color;
   p.el.style.background = color;
-  p.el.style.boxShadow = `0 0 8px 2px ${color}55`;
+  // phones: a stronger (still soft) glow so packets read on a small screen
+  p.el.style.boxShadow = phone ? `0 0 10px 3px ${color}80` : `0 0 8px 2px ${color}55`;
   p.slot = slot;
   p.v = version;
   // first trip: random offset (a long edge's second packet starts about half a trip behind)
   const delay = first ? Math.random() * duration * 0.5 + slot.n * duration * 0.5 : 150 + Math.random() * 700;
   const a = p.el.animate(frames, { duration, delay, easing: "ease-in-out" });
   if (slot.f.boost) a.updatePlaybackRate(2);
+  p.trailAnims.forEach((t) => t.cancel());
+  p.trailAnims = [];
+  if (phone) {
+    if (!p.trail.length)
+      p.trail = TRAIL.map(({ size }) => {
+        const t = document.createElement("span");
+        t.setAttribute("aria-hidden", "true");
+        t.style.cssText = `position:absolute;left:${-size / 2}px;top:${-size / 2}px;width:${size}px;height:${size}px;border-radius:9999px;opacity:0;pointer-events:none`;
+        return t;
+      });
+    p.trailAnims = p.trail.map((t, k) => {
+      if (t.parentElement !== slot.f.el) slot.f.el.insertBefore(t, p.el);
+      t.style.background = color;
+      const alpha = TRAIL[k].alpha;
+      const ta = t.animate(
+        frames.map((f) => ({ ...f, opacity: (f.opacity as number) * alpha })),
+        { duration, delay: delay + TRAIL[k].lag, easing: "ease-in-out" }
+      );
+      if (slot.f.boost) ta.updatePlaybackRate(2);
+      if (document.hidden) ta.pause();
+      return ta;
+    });
+  } else if (p.trail.length) {
+    p.trail.forEach((t) => t.remove());
+    p.trail = [];
+  }
+  if (document.hidden) a.pause();
   a.onfinish = () => {
     if (p.anim !== a) return;
     let nextSlot: Slot | undefined = slot;
@@ -402,7 +437,8 @@ export function boostField(el: HTMLElement, on: boolean) {
   const f = [...fields].find((x) => x.el === el);
   if (!f || f.boost === on) return;
   f.boost = on;
-  for (const p of packets) if (p.slot?.f === f) p.anim?.updatePlaybackRate(on ? 2 : 1);
+  for (const p of packets)
+    if (p.slot?.f === f) [p.anim, ...p.trailAnims].forEach((a) => a?.updatePlaybackRate(on ? 2 : 1));
 }
 
 // ── click burst ──────────────────────────────────────────────────────────────
@@ -432,14 +468,28 @@ function onClick(e: MouseEvent) {
   const target = e.target as Element | null;
   if (!target || target.closest(NOT_EMPTY)) return;
   if (window.getSelection()?.toString()) return;
+  burst(e.clientX, e.clientY, onScreen, 320);
+}
+
+/**
+ * Touch devices: a tap on a project / client card sends a quick pulse along the wires of that
+ * card's field nearest to the tap (stands in for the desktop hover).
+ */
+export function pulseField(el: HTMLElement, clientX: number, clientY: number) {
+  const f = [...fields].find((x) => x.el === el);
+  if (f) burst(clientX, clientY, [f], Infinity);
+}
+
+/** Packets ripple out along the edges (of `from`) nearest to a point, which flash briefly. */
+function burst(clientX: number, clientY: number, from: Iterable<Field>, reach: number) {
   const now = performance.now();
   if (now - lastBurst < BURST_GAP) return;
   const main = document.getElementById("main");
   if (!main) return;
 
-  const px = e.clientX + window.scrollX, py = e.clientY + window.scrollY;
+  const px = clientX + window.scrollX, py = clientY + window.scrollY;
   const hits: { s: FxStrip; i: number; d: number; j: number; g: Geom; color: string }[] = [];
-  for (const f of onScreen)
+  for (const f of from)
     for (const s of f.strips) {
       const g = geom(s);
       if (!g.w || !g.h) continue;
@@ -452,7 +502,7 @@ function onClick(e: MouseEvent) {
           if (d < best) ((best = d), (j = k));
         }
         const d = Math.sqrt(best);
-        if (d < 320) hits.push({ s, i, d, j, g, color: f.color });
+        if (d < reach) hits.push({ s, i, d, j, g, color: f.color });
       });
     }
   if (!hits.length) return;
@@ -492,7 +542,7 @@ function onClick(e: MouseEvent) {
     dot.getAnimations().forEach((x) => x.cancel());
     dot.style.background = h.color;
     dot.style.boxShadow = `0 0 8px 2px ${h.color}66`;
-    dot.animate(frames, { duration: Math.min(900, 380 + len * 0.6), delay: h.d * 0.8, easing: "cubic-bezier(0.2,0.6,0.3,1)" });
+    dot.animate(frames, { duration: Math.min(900, 380 + len * 0.6), delay: reach === Infinity ? Math.min(400, (h.d - hits[0].d) * 0.8) : h.d * 0.8, easing: "cubic-bezier(0.2,0.6,0.3,1)" });
   }
   schedule();
 }
@@ -554,7 +604,13 @@ function init() {
     window.addEventListener("scroll", scroll, { passive: true });
   }
   document.addEventListener("click", onClick);
+  // Hidden tab: freeze every packet (and its trail) where it is; resume on return.
+  const vis = () => {
+    for (const p of packets) [p.anim, ...p.trailAnims].forEach((a) => a && (document.hidden ? a.pause() : a.play()));
+  };
+  document.addEventListener("visibilitychange", vis);
   teardown = () => {
+    document.removeEventListener("visibilitychange", vis);
     io?.disconnect();
     secIo?.disconnect();
     secIo = null;

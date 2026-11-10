@@ -285,6 +285,18 @@ html.lite [data-wire-net] {
   opacity: 1;
 }
 
+/* Touch screens: the wires are small there, so they read a bit stronger (the base strokes
+   only; the lit copy keeps its own opacity). Static, so no cost while scrolling. */
+@media (hover: none), (pointer: coarse) {
+  [data-strip] > svg > path {
+    stroke-opacity: 0.32;
+  }
+  .wire-label,
+  .wire-plug {
+    opacity: 0.85;
+  }
+}
+
 /* Looping animations stop while their section is off screen (see SiteReady). */
 /* Scoped to the looping elements: a [data-offscreen] * rule would re-match every element in
    the section each time it enters or leaves the viewport. */
