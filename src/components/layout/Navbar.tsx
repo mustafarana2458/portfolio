@@ -79,7 +79,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header ref={bar} className="fixed inset-x-0 top-0 z-50 transition-transform duration-500 ease-[cubic-bezier(.22,1,.36,1)] data-[hidden]:-translate-y-[110%] border-b border-line bg-bg/70 backdrop-blur-xl backdrop-saturate-150">
+      <header ref={bar} style={{ viewTransitionName: "site-nav" }} className="fixed inset-x-0 top-0 z-50 transition-transform duration-500 ease-[cubic-bezier(.22,1,.36,1)] data-[hidden]:-translate-y-[110%] border-b border-line bg-bg/70 backdrop-blur-xl backdrop-saturate-150">
         <nav aria-label="Primary" className="container flex h-[var(--nav-h)] items-center justify-between gap-4">
           <a href={onHome ? "#top" : "/"} onClick={go("top")} className="font-display text-lg font-semibold tracking-tight">
             {site.initials}

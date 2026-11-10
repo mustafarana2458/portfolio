@@ -327,12 +327,28 @@ export const experience = [
   },
 ];
 
+export type Testimonial = {
+  quote: string;
+  name: string;
+  role: string;
+  company: string;
+  /** Links the quote to a case study (/work/<slug>/). */
+  projectSlug?: string;
+};
+
+/**
+ * Client testimonials. Real quotes only: the Testimonials section doesn't render at all while
+ * this is empty.
+ */
+export const testimonials: Testimonial[] = [];
+
 /** Background wire fields behind the non-project sections: site accent + a few labels each. */
 export const sectionWires: Record<string, { color: string; labels: string[] }> = {
   about: { color: "#FF6B35", labels: ["trigger", "profile", "JSON", "output"] },
   skills: { color: "#FF6B35", labels: ["node", "palette", "n8n", "TypeScript", "Docker"] },
   clients: { color: "#FF6B35", labels: ["batch", "items", "Next.js", "WhatsApp"] },
   experience: { color: "#FF6B35", labels: ["run", "history", "Aevia", "CTO", "n8n"] },
+  testimonials: { color: "#FF6B35", labels: ["webhook", "response", "200 OK", "feedback"] },
   services: { color: "#FF6B35", labels: ["template", "workflow", "SaaS", "agents", "n8n"] },
   contact: { color: "#FF6B35", labels: ["input", "send", "email", "WhatsApp"] },
 };
