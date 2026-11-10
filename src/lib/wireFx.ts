@@ -8,8 +8,8 @@
 //   first time something near it needs them, and are layers only while they're lit.
 // - Click on empty background: packets ripple out along the nearest edges (≤1 burst / 500ms).
 // - Idle packets: every visible edge of the on-screen fields is a "slot" (long edges: two).
-//   One page-wide pool of packets (≤16) serves them. On desktop only the fields in the section
-//   that fills most of the screen get slots. Each packet
+//   One page-wide pool of packets (≤16, phones ≤6) serves them. Only the fields in the section
+//   that fills most of the screen get slots. Runs on its own: touch devices need no hover. Each packet
 //   makes one trip (Web Animation, transform/opacity) and then takes the next slot: when there
 //   are more slots than the cap, slots rotate through a queue so no edge stays dead; when there
 //   are fewer, each slot keeps its own packet. Random start offsets and speeds keep them out
@@ -269,7 +269,7 @@ const schedule = () => {
 // ── idle packets ─────────────────────────────────────────────────────────────
 
 const LONG = 280; // px: edges longer than this carry two packets
-const cap = () => 16;
+const cap = () => (phone ? 6 : 16); // phones: a light ambient run
 const edgeLen = (a: Float32Array) => {
   let len = 0;
   for (let k = 1; k < SAMPLES; k++) len += Math.hypot(a[k * 2] - a[k * 2 - 2], a[k * 2 + 1] - a[k * 2 - 1]);
@@ -284,7 +284,7 @@ const schedulePlan = () => {
 function plan() {
   const next = new Map<string, Slot>();
   for (const f of onScreen) {
-    if (!phone && active && sectionOf.get(f) !== active) continue;
+    if (active && sectionOf.get(f) !== active) continue;
     let id = fieldIds.get(f);
     if (id === undefined) fieldIds.set(f, (id = nextFieldId++));
     f.strips.forEach((s, si) => {

@@ -40,7 +40,7 @@ function runFrames(c: WireCurve, x: number, y: number, w: number, h: number): Ke
  *   screen (touch): the field lights up in the card's colour (a cloned copy of the strips with
  *   edges at 40%, faded in with opacity), its packets run 2x, and 3 extra packets run into the
  *   card's ports (client cards: along the card's strip).
- * Reduced motion or html.lite: nothing runs.
+ * Reduced motion: the static SVG wires still show, nothing animates. html.lite: no field.
  */
 export default function WireFX({ seed, labels, across, color, kind }: { seed: string; labels: string[]; across?: number; color: string; kind: Kind }) {
   const root = useRef<HTMLDivElement>(null);

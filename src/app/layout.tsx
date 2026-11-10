@@ -16,8 +16,10 @@ const serif = Instrument_Serif({ subsets: ["latin"], weight: "400", style: "ital
 // Mono is for small labels/logs: not preloaded, so it never competes with the hero for bandwidth.
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap", preload: false });
 
-// deviceMemory is Chromium-only; where it's missing, cores + Data Saver decide.
-const LITE_CHECK = `(function(){try{var n=navigator,c=n.connection||{},m=n.deviceMemory;if(matchMedia("(max-width: 767px)").matches&&(c.saveData||(n.hardwareConcurrency||0)<6||(m!==undefined&&m<4)))document.documentElement.classList.add("lite")}catch(e){}})()`;
+// Only clearly weak phones go lite. deviceMemory is Chromium-only, and WebKit/Gecko clamp
+// hardwareConcurrency for anti-fingerprinting (iPhones report a low, fake core count), so a
+// missing value means "unknown", never "weak", and cores are only trusted where memory is reported.
+const LITE_CHECK = `(function(){try{var n=navigator,c=n.connection||{},m=n.deviceMemory,h=n.hardwareConcurrency,mem=typeof m==="number"&&m>0;if(matchMedia("(max-width: 767px)").matches&&(c.saveData||(mem&&m<=2)||(mem&&typeof h==="number"&&h>0&&h<=2)))document.documentElement.classList.add("lite")}catch(e){}})()`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -52,8 +54,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${serif.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
-        {/* Adaptive quality, before first paint: phones that aren't capable (fewer than 6 cores,
-            under 4GB memory, or Data Saver on) get html.lite: no background wire fields and
+        {/* Adaptive quality, before first paint: only clearly weak phones (≤2GB memory or ≤2 cores
+            where Chromium reports them, or Data Saver on) get html.lite: no background wire fields and
             static looping animations. Capable phones animate like desktop. */}
         <script dangerouslySetInnerHTML={{ __html: LITE_CHECK }} />
         <noscript>
