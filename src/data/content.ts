@@ -586,10 +586,8 @@ export const caseStudies: CaseStudy[] = [
       "Endpoints restricted for new Spotify apps (such as Spotify-owned playlists) fail. Each home shelf fails on its own, and the quick-access grid tops itself up from Liked Songs, your playlists and recent albums.",
       "Reading tags from imported files without a library: a small parser for ID3v2.2 to 2.4 (with an ID3v1 fallback) and MP4/M4A metadata gets the title, artist, album and cover.",
     ],
-    // TODO(Mustafa): status and users. Is it only used with your own Spotify account, or have you
-    // added others to the app's allowlist? Add that here once confirmed.
     result:
-      "Live at mustify-topaz.vercel.app and installable as a PWA: home grid and shelves, playlist, album, artist and Liked Songs pages, search, a Now Playing panel, a device picker, keyboard shortcuts, lock-screen controls, appearance settings and the Offline section. An independent personal project, not affiliated with or endorsed by Spotify.",
+      "In daily use by me and a few friends. Live at mustify-topaz.vercel.app and installable as a PWA: home grid and shelves, playlist, album, artist and Liked Songs pages, search, a Now Playing panel, a device picker, keyboard shortcuts, lock-screen controls, appearance settings and the Offline section. An independent personal project, not affiliated with or endorsed by Spotify.",
     galleryNote: "Captured from my own account. Account name, avatar and device names are hidden.",
     gallery: [
       {
