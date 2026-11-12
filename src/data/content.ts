@@ -162,8 +162,8 @@ export const projects: Project[] = [
   },
   {
     slug: "mustify",
-    // The app's own "Lavender" accent preset.
-    color: "#B39DFF",
+    // The app's own "Baby Pink" accent preset (captured in its Blossom Light theme).
+    color: "#F8A5C2",
     wireLabels: ["PKCE", "Web API", "PWA", "offline", "Zustand"],
     title: "Mustify",
     kind: "Personal music web app (PWA)",
@@ -173,7 +173,7 @@ export const projects: Project[] = [
     // Captured from the live app on the owner's account by scripts/capture-mustify.mjs
     // (account name, avatar and device names hidden during capture).
     image: "/images/projects/mustify-home.png",
-    imageAlt: "Mustify home in a dark theme with a lavender accent: library sidebar, a quick-access grid of playlists, recently played albums and the player bar",
+    imageAlt: "Mustify home in its Blossom Light theme with a baby pink accent: library sidebar, a quick-access grid of playlists, recently played albums and the player bar",
     video: "/videos/mustify.mp4",
     live: "https://mustify-topaz.vercel.app",
     github: "https://github.com/mustafarana2458/mustify",

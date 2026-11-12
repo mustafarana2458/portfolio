@@ -35,8 +35,10 @@ const FRAMES = join(DIR, "frames");
 const STILLS = "public/images/projects";
 const PLAY = process.argv.includes("--play");
 const LOGIN_TIMEOUT = 20 * 60_000;
-// The app's own accent preset "Lavender": the portfolio's colour for this project.
-const ACCENT = "#B39DFF";
+// The app's own "Baby Pink" accent preset + "Blossom Light" theme: the look shown in the portfolio.
+const ACCENT = "#F8A5C2";
+const THEME = "blossom-light";
+const THEME_TINT = 100; // Blossom Light's preset background tint (what picking it in the app sets)
 const SECRETS = [/eyJ[\w-]{10,}\.[\w-]{10,}/, /\b(?:BQ|AQ)[\w-]{40,}/, /\b(?:access|refresh)[_-]?token\b\s*[:=]/i];
 
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
@@ -61,12 +63,14 @@ const PRIVACY_CSS = `
   *, *::before, *::after { caret-color: transparent !important; }
 `;
 
-/** Pins this profile's saved appearance (the app's own setting) to Dark + Lavender before it loads. */
-const accentInit = (accent) => {
+/** Sets this profile's saved appearance (the app's own setting) to Baby Pink + Blossom Light before it loads. */
+const accentInit = ({ accent, theme, bgTint }) => {
   try {
     const raw = localStorage.getItem("appearance");
     const saved = raw ? JSON.parse(raw) : { state: {}, version: 0 };
-    saved.state = { ...saved.state, accent, theme: "dark", tintBackgrounds: false, bgTint: 0 };
+    // Already Baby Pink / Blossom Light: keep the saved settings as they are.
+    if (saved.state?.accent?.toUpperCase() === accent && saved.state?.theme === theme) return;
+    saved.state = { ...saved.state, accent, theme, bgTint };
     localStorage.setItem("appearance", JSON.stringify(saved));
   } catch {
     /* ignore */
@@ -192,7 +196,7 @@ const settle = async (page, ms = 1500) => {
 // ───────────────────────── desktop ─────────────────────────
 mkdirSync(PROFILE, { recursive: true });
 let context = await launch({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
-await context.addInitScript(accentInit, ACCENT);
+await context.addInitScript(accentInit, { accent: ACCENT, theme: THEME, bgTint: THEME_TINT });
 let page = context.pages()[0] ?? (await context.newPage());
 await page.goto(BASE, { waitUntil: "load" });
 await page.waitForTimeout(2500);
@@ -271,14 +275,14 @@ const scroll = async (to, frames) => {
 };
 
 // 1. Home grid (poster frame), then down to the shelves.
-await hold(36);
+await hold(42);
 await scroll(420, 30);
-await hold(14);
+await hold(22);
 await scroll(0, 18);
 
 // 2. Open a playlist and start it, so the now-playing bar is live.
 await nav(playlistSel);
-await hold(24);
+await hold(34);
 if (PLAY) {
   const play = page.locator('[style*="grid-area: main"] button[aria-label^="Play "]').first();
   if (await play.isVisible().catch(() => false)) {
@@ -286,7 +290,7 @@ if (PLAY) {
     await page.waitForTimeout(2500);
   } else console.log("  (no play button found; showing the current player state)");
 }
-await hold(30, 60);
+await hold(36, 60);
 await scroll(380, 24);
 await hold(16, 60);
 
@@ -302,20 +306,20 @@ for (const ch of "lofi beats") {
 await page.waitForTimeout(1500);
 await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
 await page.waitForTimeout(2000);
-await hold(36);
+await hold(44);
 await still("search");
 await box.blur();
 
 // 4. Offline section: Downloaded, then Discover (Jamendo) and Audius.
 await nav('a[href="/offline"]');
-await hold(26);
+await hold(34);
 for (const tab of ["Discover", "Audius"]) {
   const chip = page.getByRole("button", { name: tab, exact: true }).first();
   if (!(await chip.isVisible().catch(() => false))) continue;
   await chip.click();
   await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
   await page.waitForTimeout(1500);
-  await hold(30);
+  await hold(36);
   if (tab === "Audius") await still("offline");
 }
 
@@ -325,7 +329,7 @@ await context.close();
 // ───────────────────────── mobile (iPhone 13) ─────────────────────────
 const { defaultBrowserType, ...iphone } = devices["iPhone 13"];
 context = await launch({ ...iphone, deviceScaleFactor: 2 });
-await context.addInitScript(accentInit, ACCENT);
+await context.addInitScript(accentInit, { accent: ACCENT, theme: THEME, bgTint: THEME_TINT });
 page = context.pages()[0] ?? (await context.newPage());
 await page.goto(BASE, { waitUntil: "load" });
 await settle(page, 3000);
