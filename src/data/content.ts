@@ -161,6 +161,24 @@ export const projects: Project[] = [
     private: true,
   },
   {
+    slug: "mustify",
+    // The app's own "Lavender" accent preset.
+    color: "#B39DFF",
+    wireLabels: ["PKCE", "Web API", "PWA", "offline", "Zustand"],
+    title: "Mustify",
+    kind: "Personal music web app (PWA)",
+    problem: "A personal music player should look the way you want, and still play something with no connection.",
+    solution: "A personal music player built on the Spotify Web API, with generated themes and an Offline section.",
+    tags: ["React", "TypeScript", "Vite", "Spotify Web API", "PWA", "Zustand", "Tailwind CSS"],
+    // Captured from the live app on the owner's account by scripts/capture-mustify.mjs
+    // (account name, avatar and device names hidden during capture).
+    image: "/images/projects/mustify-home.png",
+    imageAlt: "Mustify home in a dark theme with a lavender accent: library sidebar, a quick-access grid of playlists, recently played albums and the player bar",
+    video: "/videos/mustify.mp4",
+    live: "https://mustify-topaz.vercel.app",
+    github: "https://github.com/mustafarana2458/mustify",
+  },
+  {
     slug: "crease",
     color: "#C8A27A",
     wireLabels: ["scroll", "frames", "GSAP", "Lenis"],
@@ -410,8 +428,8 @@ export type CaseStudy = {
   decisions: string[];
   challenges: string[];
   result: string;
-  /** Extra screenshots shown under the hero media (1280×800). */
-  gallery?: { src: string; alt: string; caption: string }[];
+  /** Extra screenshots shown under the hero media (1280×800). `fit: "contain"` for other shapes (phone screens). */
+  gallery?: { src: string; alt: string; caption: string; fit?: "cover" | "contain" }[];
   /** Shown under the gallery, e.g. where the screens come from. */
   galleryNote?: string;
 };
@@ -523,6 +541,79 @@ export const caseStudies: CaseStudy[] = [
       "Parallel agents overloaded the LLM endpoint, so calls now retry with backoff.",
     ],
     result: "The full pipeline runs end-to-end on a server and renders a finished reel from a single topic. Private repo, case study only.",
+  },
+  {
+    slug: "mustify",
+    updated: "2026-11-12",
+    seoDescription:
+      "Mustify is a personal music web app and PWA built on the Spotify Web API, with in-browser playback, generated themes and an Offline section for free music.",
+    problem:
+      "A personal music player should look the way you want, work on desktop and as an iPhone home-screen app, and still play something when there is no connection.",
+    role: "Designed and built solo as a personal project.",
+    architecture: {
+      nodes: [
+        { id: "user", label: "Browser / PWA", kind: "trigger", note: "desktop, or installed on the iPhone home screen" },
+        { id: "app", label: "React 19 + Vite app", kind: "app", note: "TypeScript · Zustand · Tailwind CSS v4 · React Router" },
+        { id: "auth", label: "PKCE login", kind: "infra", note: "Authorization Code + PKCE, no backend, no client secret" },
+        { id: "api", label: "Spotify Web API", kind: "data", note: "library, search, home shelves, /me/player" },
+        { id: "sdk", label: "Web Playback SDK", kind: "app", note: "plays in the tab on desktop (Premium); phones act as a Connect remote" },
+        { id: "offline", label: "Offline engine", kind: "app", note: "HTML5 audio · Jamendo, Audius, your own files" },
+        { id: "store", label: "IndexedDB + cache", kind: "data", note: "IndexedDB + Cache Storage: offline tracks and covers; nothing from Spotify is stored" },
+        { id: "out", label: "mustify-topaz.vercel.app", kind: "output", note: "Vercel · service worker caches the app shell" },
+      ],
+      edges: [
+        ["user", "app"],
+        ["app", "auth"],
+        ["auth", "api"],
+        ["app", "sdk"],
+        ["sdk", "api"],
+        ["app", "offline"],
+        ["offline", "store"],
+        ["app", "out"],
+      ],
+    },
+    decisions: [
+      "No backend: login is the Authorization Code flow with PKCE, so there is no client secret to hide. Tokens refresh before they expire, concurrent refreshes share one request, and the API client retries once on 401 and waits out 429 Retry-After.",
+      "Two playback modes. On desktop the Web Playback SDK turns the browser tab into a playback device. Mobile browsers aren't supported by the SDK, so on phones the app is a Spotify Connect remote for whatever device is playing.",
+      "Official Web API only. Where it has no endpoint, the app builds its own: the home quick-access grid groups recently played tracks by the playlist or album they came from, page header colours come from a dominant-colour pass over the cover on a canvas, and search ranks its own top result.",
+      "Every playback command updates the UI optimistically, reverts on failure, then re-reads /me/player so the player can't drift. The Web API has no push channel, so player state is polled: slowly while the tab itself plays, faster in remote mode.",
+      "Offline is kept separate from Spotify, and nothing from Spotify is cached. The Offline section plays Creative Commons music from Jamendo, artist-downloadable tracks from Audius and your own MP3/M4A files through its own audio engine, stored in IndexedDB and Cache Storage. It writes into the same player store, so the player bar, shortcuts and lock-screen controls work unchanged.",
+      "Theming: the whole palette is generated from one accent colour and five themes, and text colours are checked against WCAG AA contrast on every surface they sit on. The favicon and app icons follow the accent.",
+    ],
+    challenges: [
+      "The iPhone home-screen app: login leaves the app and comes back, so the PKCE verifier is kept in localStorage (sessionStorage can be lost). Audio may only start from a tap, so the player is unlocked with a silent clip first. position:fixed anchors to a shorter viewport in standalone mode, so the tab bar and mini player are positioned inside the layout instead.",
+      "iOS suspends the Spotify app in the background and it drops out of the device list. Remote mode retries device discovery for about 10 seconds and quietly transfers playback back to the last device used.",
+      "Endpoints restricted for new Spotify apps (such as Spotify-owned playlists) fail. Each home shelf fails on its own, and the quick-access grid tops itself up from Liked Songs, your playlists and recent albums.",
+      "Reading tags from imported files without a library: a small parser for ID3v2.2 to 2.4 (with an ID3v1 fallback) and MP4/M4A metadata gets the title, artist, album and cover.",
+    ],
+    // TODO(Mustafa): status and users. Is it only used with your own Spotify account, or have you
+    // added others to the app's allowlist? Add that here once confirmed.
+    result:
+      "Live at mustify-topaz.vercel.app and installable as a PWA: home grid and shelves, playlist, album, artist and Liked Songs pages, search, a Now Playing panel, a device picker, keyboard shortcuts, lock-screen controls, appearance settings and the Offline section. An independent personal project, not affiliated with or endorsed by Spotify.",
+    galleryNote: "Captured from my own account. Account name, avatar and device names are hidden.",
+    gallery: [
+      {
+        src: "/images/projects/mustify-playlist.png",
+        alt: "Mustify playlist page with a header coloured from the cover art, a big play button and the track list",
+        caption: "Playlist",
+      },
+      {
+        src: "/images/projects/mustify-search.png",
+        alt: "Mustify search results for 'lofi beats': top result, songs and artists, with filter chips",
+        caption: "Search",
+      },
+      {
+        src: "/images/projects/mustify-offline.png",
+        alt: "Mustify Offline section on the Audius tab: trending tracks with genre chips, plus Downloaded, Discover and Import tabs",
+        caption: "Offline: Audius",
+      },
+      {
+        src: "/images/projects/mustify-mobile.jpg",
+        alt: "Mustify on an iPhone-sized screen: quick-access grid, recently played, a mini player and a glass tab bar",
+        caption: "iPhone layout",
+        fit: "contain",
+      },
+    ],
   },
   {
     slug: "crease",

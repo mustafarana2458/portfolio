@@ -169,7 +169,7 @@ export default function CaseStudyPage({ params }: { params: { slug: string } }) 
                 <li key={g.src}>
                   <figure>
                     <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-line bg-surface">
-                      <ExportedImage src={g.src} alt={g.alt} fill sizes="(min-width: 1360px) 640px, (min-width: 768px) 46vw, 92vw" className="object-cover object-top" />
+                      <ExportedImage src={g.src} alt={g.alt} fill sizes="(min-width: 1360px) 640px, (min-width: 768px) 46vw, 92vw" className={g.fit === "contain" ? "object-contain" : "object-cover object-top"} />
                     </div>
                     <figcaption className="mt-3 font-mono text-[13px] text-muted">{g.caption}</figcaption>
                   </figure>
