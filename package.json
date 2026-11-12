@@ -3,14 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/media-versions.mjs",
     "dev": "next dev",
     "prepare-images": "node scripts/prepare-images.mjs",
     "og-image": "node scripts/og-image.mjs",
+    "prebuild": "node scripts/media-versions.mjs",
     "build": "next build && next-image-export-optimizer",
     "start": "npx serve out -l 3000",
     "lint": "next lint",
     "capture": "node scripts/capture-sites.mjs",
-    "prepare-videos": "node scripts/prepare-videos.mjs"
+    "prepare-videos": "node scripts/prepare-videos.mjs",
+    "media-versions": "node scripts/media-versions.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

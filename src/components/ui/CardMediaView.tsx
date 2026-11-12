@@ -1,4 +1,4 @@
-import ExportedImage from "next-image-export-optimizer";
+import MediaImage from "@/components/ui/MediaImage";
 import type { CardMedia } from "@/lib/media";
 import ProjectCover from "./ProjectCover";
 import AgentGraphCover from "./AgentGraphCover";
@@ -29,7 +29,7 @@ export default function CardMediaView({ media, title, kind, index, cover, slug, 
   return (
     <div className={cn("relative aspect-[16/10] overflow-hidden bg-surface", className)}>
       {media.still ? (
-        <ExportedImage
+        <MediaImage
           src={media.still}
           alt={media.alt}
           fill
